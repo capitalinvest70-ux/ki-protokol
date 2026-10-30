@@ -1,0 +1,98 @@
+name: Протоколи КИ – Android + Windows
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+permissions:
+  contents: write
+
+jobs:
+  android:
+    runs-on: ubuntu-latest
+    defaults: { run: { working-directory: mobile } }
+    outputs:
+      ver: ${{ steps.v.outputs.ver }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 20 }
+      - uses: actions/setup-java@v4
+        with: { distribution: temurin, java-version: 17 }
+      - id: v
+        name: Version
+        run: |
+          V=$(node -p "require('./package.json').version")
+          echo "ver=$V" >> $GITHUB_OUTPUT
+          echo "VER=$V" >> $GITHUB_ENV
+          echo "APKNAME=Protokoli-KI-v$V-build${{ github.run_number }}" >> $GITHUB_ENV
+      - name: Fixed signing key (new versions install over the old one)
+        run: |
+          mkdir -p ~/.android keystore
+          if [ ! -f keystore/app.keystore ]; then
+            keytool -genkeypair -keystore keystore/app.keystore -storepass android -alias androiddebugkey -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Android Debug,O=Android,C=US"
+            git config user.name "github-actions"; git config user.email "actions@github.com"
+            git add keystore/app.keystore && git commit -m "Add fixed signing key [skip ci]" && git push
+          fi
+          cp keystore/app.keystore ~/.android/debug.keystore
+      - name: Bundle print + screens
+        run: cat ../vendor/html2canvas.min.js > www/skin.js && printf '\n;\n' >> www/skin.js && cat ../print.js >> www/skin.js && printf '\n;\n' >> www/skin.js && cat ../skin.js >> www/skin.js
+      - run: npm install
+      - run: npx cap add android
+      - name: Skin activity, icon, version
+        run: |
+          D=android/app/src/main/java/bg/capitalinvest/protokol
+          mkdir -p $D && cp native/MainActivity.java $D/MainActivity.java
+          R=android/app/src/main/res
+          rm -rf $R/mipmap-anydpi-v26
+          for d in mdpi hdpi xhdpi xxhdpi xxxhdpi; do
+            cp icons/ic_$d.png $R/mipmap-$d/ic_launcher.png
+            cp icons/ic_$d.png $R/mipmap-$d/ic_launcher_round.png
+            cp icons/ic_$d.png $R/mipmap-$d/ic_launcher_foreground.png
+          done
+          M=android/app/src/main/AndroidManifest.xml
+          sed -i 's#<uses-permission android:name="android.permission.INTERNET" />#<uses-permission android:name="android.permission.INTERNET" />\n    <uses-permission android:name="android.permission.BLUETOOTH" android:maxSdkVersion="30" />\n    <uses-permission android:name="android.permission.BLUETOOTH_ADMIN" android:maxSdkVersion="30" />\n    <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />#' $M
+          grep -n BLUETOOTH $M
+          G=android/app/build.gradle
+          sed -i "s/versionCode [0-9]*/versionCode ${{ github.run_number }}/; s/versionName \"[^\"]*\"/versionName \"$VER\"/" $G
+      - run: npx cap sync android
+      - name: Build APK
+        working-directory: mobile/android
+        run: chmod +x gradlew && ./gradlew assembleDebug
+      - run: mv android/app/build/outputs/apk/debug/app-debug.apk "../$APKNAME.apk"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: android
+          path: ${{ env.APKNAME }}.apk
+
+  windows:
+    runs-on: windows-latest
+    defaults: { run: { working-directory: desktop, shell: bash } }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 20 }
+      - run: cp ../skin.js ../print.js ../vendor/html2canvas.min.js .
+      - run: npm install
+      - run: npm run dist
+        env: { CSC_IDENTITY_AUTO_DISCOVERY: "false" }
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows
+          path: desktop/dist/*.exe
+
+  release:
+    needs: [ android, windows ]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with: { path: out, merge-multiple: true }
+      - run: ls -la out
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: protokoli-v${{ needs.android.outputs.ver }}-build${{ github.run_number }}
+          name: Протоколи КИ v${{ needs.android.outputs.ver }} (build ${{ github.run_number }})
+          target_commitish: ${{ github.sha }}
+          body: |
+            📱 Телефон: свалете файла .apk и го отворете.
+            💻 Компютър: свалете Protokoli-KI-Setup-….exe и го отворете – на работния плот се появява „Протоколи КИ“.
+          files: out/*

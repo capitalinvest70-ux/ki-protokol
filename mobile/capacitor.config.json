@@ -1,0 +1,10 @@
+{
+  "appId": "bg.capitalinvest.protokol",
+  "appName": "Протоколи КИ",
+  "webDir": "www",
+  "server": {
+    "url": "https://protocol-app-production-cc1d.up.railway.app/",
+    "cleartext": false
+  },
+  "android": { "allowMixedContent": false, "backgroundColor": "#0b2a5b" }
+}

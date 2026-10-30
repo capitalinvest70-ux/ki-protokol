@@ -1,0 +1,117 @@
+// Протоколи КИ – версия за компютър.
+// Отваря Програма за протокол в собствен прозорец и слага скина на Капитал Инвест.
+const { app, BrowserWindow, shell, Menu, session, ipcMain } = require('electron');
+const path = require('path');
+const fs = require('fs');
+const os = require('os');
+const net = require('net');
+
+const SITE = 'https://protocol-app-production-cc1d.up.railway.app/';
+// html2canvas (за печат) + модул за печат + скин
+const SKIN = ['html2canvas.min.js', 'print.js', 'skin.js']
+  .map(f => fs.readFileSync(path.join(__dirname, f), 'utf8')).join('\n;\n');
+const DOWNLOAD_RE = /(-docx|download=word)/;
+
+if (!app.requestSingleInstanceLock()) app.quit();
+
+let win;
+
+function inject(wc) {
+  wc.executeJavaScript(SKIN).catch(() => {});
+}
+
+function setupDownloads() {
+  // Всички Word файлове отиват в Документи\Протоколи и се отварят сами
+  session.defaultSession.on('will-download', (e, item) => {
+    const dir = path.join(app.getPath('documents'), 'Протоколи');
+    fs.mkdirSync(dir, { recursive: true });
+    let file = path.join(dir, item.getFilename());
+    const ext = path.extname(file), base = file.slice(0, -ext.length || undefined);
+    for (let i = 2; fs.existsSync(file); i++) file = `${base} (${i})${ext}`;
+    item.setSavePath(file);
+    item.once('done', (ev, state) => { if (state === 'completed') shell.openPath(file); });
+  });
+}
+
+function createWindow() {
+  win = new BrowserWindow({
+    width: 1400, height: 950, show: false,
+    title: 'Протоколи КИ',
+    icon: path.join(__dirname, 'icon.png'),
+    backgroundColor: '#0b2a5b',
+    autoHideMenuBar: true,
+    webPreferences: { contextIsolation: true, spellcheck: true, preload: path.join(__dirname, 'preload.js') },
+  });
+  win.maximize();
+  win.show();
+  win.loadURL(SITE);
+
+  win.webContents.on('did-finish-load', () => inject(win.webContents));
+  win.on('page-title-updated', (e) => { e.preventDefault(); win.setTitle('Протоколи КИ'); });
+
+  win.webContents.setWindowOpenHandler(({ url }) => {
+    if (DOWNLOAD_RE.test(url)) { win.webContents.downloadURL(url); return { action: 'deny' }; }
+    if (url.startsWith(SITE)) {
+      return { action: 'allow', overrideBrowserWindowOptions: { autoHideMenuBar: true, width: 1100, height: 900, icon: path.join(__dirname, 'icon.png') } };
+    }
+    shell.openExternal(url);
+    return { action: 'deny' };
+  });
+
+  // Ctrl + колелце / Ctrl + +/- за още по-големи или по-малки букви
+  win.webContents.on('zoom-changed', (e, dir) => {
+    const z = win.webContents.getZoomLevel();
+    win.webContents.setZoomLevel(dir === 'in' ? Math.min(z + 0.5, 4) : Math.max(z - 0.5, -3));
+  });
+  win.webContents.on('before-input-event', (e, input) => {
+    if (input.type !== 'keyDown') return;
+    const wc = win.webContents, z = wc.getZoomLevel();
+    if (input.control && (input.key === '+' || input.key === '=')) { wc.setZoomLevel(Math.min(z + 0.5, 4)); e.preventDefault(); }
+    if (input.control && input.key === '-') { wc.setZoomLevel(Math.max(z - 0.5, -3)); e.preventDefault(); }
+    if (input.control && input.key === '0') { wc.setZoomLevel(0); e.preventDefault(); }
+    if (input.key === 'F5') { wc.reload(); e.preventDefault(); }
+  });
+}
+
+/* ---------- Печат ---------- */
+ipcMain.handle('ki-printers', async () => {
+  const list = await win.webContents.getPrintersAsync();
+  return list.map(p => ({ name: p.name, displayName: p.displayName, isDefault: !!p.isDefault }));
+});
+
+// Печат на един лист (картинка) към принтер от Windows, без прозорец
+ipcMain.handle('ki-print-image', async (e, dataUrl, o) => {
+  const file = path.join(os.tmpdir(), `ki-print-${Date.now()}.html`);
+  fs.writeFileSync(file, `<!doctype html><html><head><meta charset="utf-8"><style>
+    @page{size:${o.paperMm}mm ${Math.ceil(o.heightMm) + 1}mm;margin:0}
+    html,body{margin:0;padding:0;background:#fff}
+    img{display:block;width:${o.widthMm}mm;margin:0 auto}
+  </style></head><body><img src="${dataUrl}"></body></html>`);
+  const pw = new BrowserWindow({ show: false, webPreferences: { offscreen: false } });
+  try {
+    await pw.loadFile(file);
+    await new Promise((res, rej) => pw.webContents.print({
+      silent: true, deviceName: o.deviceName, printBackground: true, color: false,
+      margins: { marginType: 'none' },
+      pageSize: { width: Math.round(o.paperMm * 1000), height: Math.round((Math.ceil(o.heightMm) + 1) * 1000) },
+    }, (ok, why) => ok ? res() : rej(new Error(why || 'Принтерът отказа'))));
+  } finally {
+    pw.destroy();
+    fs.unlink(file, () => {});
+  }
+  return true;
+});
+
+// Направо към мрежов термопринтер (порт 9100), без драйвер
+ipcMain.handle('ki-raw', (e, target, base64) => new Promise((res, rej) => {
+  const [host, port] = String(target).split(':');
+  const sock = net.createConnection({ host, port: Number(port) || 9100, timeout: 8000 }, () => {
+    sock.end(Buffer.from(base64, 'base64'), () => res(true));
+  });
+  sock.on('timeout', () => { sock.destroy(); rej(new Error('Принтерът ' + host + ' не отговаря')); });
+  sock.on('error', err => rej(new Error('Няма връзка с ' + host + ': ' + err.message)));
+}));
+
+app.on('second-instance', () => { if (win) { if (win.isMinimized()) win.restore(); win.focus(); } });
+app.whenReady().then(() => { Menu.setApplicationMenu(null); setupDownloads(); createWindow(); });
+app.on('window-all-closed', () => app.quit());
