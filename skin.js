@@ -2,6 +2,11 @@
   'use strict';
   if (document.getElementById('ki-skin')) return; // вече е заредено
   const ANDROID = !!window.KIAndroid;
+  if (!document.querySelector('meta[name=viewport]')) {
+    const vm = document.createElement('meta'); vm.name = 'viewport'; vm.content = 'width=device-width, initial-scale=1';
+    document.head.appendChild(vm);
+  }
+  const PHONE = () => window.innerWidth < 760;
 
   /* ---------- 1. ВИД ---------- */
   const NAVY = '#0b2a5b', NAVY2 = '#123a7a', GOLD = '#f2b632', BG = '#eef2f8';
@@ -48,7 +53,20 @@
     #ki-modal .ki-actions { display:flex; gap:12px; margin-top:20px; }
     #ki-modal .ki-go { flex:2; background:${NAVY} !important; color:#fff !important; border:none !important; font-size:28px !important; min-height:72px !important; }
     #ki-modal .ki-no { flex:1; background:#e3e8f1 !important; color:${NAVY} !important; border:none !important; }
-    @media (max-width:700px){ body, body *{ font-size:22px !important; } #ki-panel{ width:calc(100vw - 36px); } }
+    .auth-shell, .auth-card { max-width:100% !important; box-sizing:border-box !important; }
+    .auth-card input, .auth-card button { width:100% !important; box-sizing:border-box !important; }
+    #ki-panel.ki-hide { display:none !important; }
+    #ki-panel.ki-min { width:auto; padding:10px 16px; border-radius:40px; }
+    #ki-panel.ki-min .ki-t { margin:0; }
+    #ki-panel.ki-min #ki-status { display:none; }
+    @media (max-width:760px){
+      body, body *{ font-size:20px !important; }
+      h1, h1 *{ font-size:30px !important; } h2, h2 *{ font-size:26px !important; } h3, h3 *{ font-size:23px !important; }
+      #ki-panel{ right:10px; bottom:10px; width:calc(100vw - 20px); max-height:80vh; overflow:auto; }
+      #ki-panel.ki-min{ width:auto; }
+      #ki-panel button{ font-size:21px !important; min-height:56px !important; }
+      table{ display:block !important; overflow-x:auto !important; }
+    }
   `;
   const st = document.createElement('style'); st.id = 'ki-skin'; st.textContent = css; document.head.appendChild(st);
 
@@ -199,7 +217,7 @@
     let p = document.getElementById('ki-panel');
     if (!p) {
       p = document.createElement('div'); p.id = 'ki-panel';
-      if (LS.get('min', false)) p.classList.add('ki-min');
+      if (LS.get('min', PHONE())) p.classList.add('ki-min');
       p.innerHTML = `<div class="ki-t" title="Скрий/покажи">Капитал Инвест ▾</div>
         <button data-a="new">➕ Ново събрание</button>
         <button data-a="fill">✍️ Готови текстове</button>
@@ -210,6 +228,7 @@
       p.querySelector('.ki-t').onclick = () => { p.classList.toggle('ki-min'); LS.set('min', p.classList.contains('ki-min')); };
       p.addEventListener('click', async (e) => {
         const a = e.target.closest('button')?.dataset.a; if (!a) return;
+        if (PHONE()) { p.classList.add('ki-min'); }
         try {
           if (a === 'new') quickMeeting();
           if (a === 'fill') await fillTexts();
@@ -220,6 +239,9 @@
       });
       document.body.appendChild(p);
     }
+    const loggedOut = !!(document.querySelector('.auth-shell') || document.getElementById('auth_username'));
+    p.classList.toggle('ki-hide', loggedOut);
+    p.querySelector('.ki-t').textContent = p.classList.contains('ki-min') ? (PHONE() ? 'КИ ▴' : 'Капитал Инвест ▴') : 'Капитал Инвест ▾';
     const m = inMeeting(), b = inBuilding();
     p.querySelector('[data-a=new]').disabled = !b;
     p.querySelector('[data-a=fill]').disabled = !m;

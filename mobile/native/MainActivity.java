@@ -50,6 +50,11 @@ public class MainActivity extends BridgeActivity {
         WebView wv = getBridge().getWebView();
         WebSettings s = wv.getSettings();
         s.setTextZoom(100);
+        s.setUseWideViewPort(false); // страницата да е широка колкото телефона
+        s.setLoadWithOverviewMode(false);
+        s.setSupportZoom(true);
+        s.setBuiltInZoomControls(true);
+        s.setDisplayZoomControls(false);
         s.setSupportMultipleWindows(false);
         s.setJavaScriptCanOpenWindowsAutomatically(true);
         CookieManager.getInstance().setAcceptCookie(true);
