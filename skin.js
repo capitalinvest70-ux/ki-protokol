@@ -7,23 +7,27 @@
     document.head.appendChild(vm);
   }
   const PHONE = () => window.innerWidth < 760;
+  const fsKey = () => (PHONE() ? 'fs_phone' : 'fs_pc');
+  const applyFs = () => { let v = 18; try { v = Number(JSON.parse(localStorage.getItem('ki_' + fsKey()))) || (PHONE() ? 16 : 26); } catch (e) { v = PHONE() ? 16 : 26; } document.documentElement.style.setProperty('--ki-fs', v + 'px'); return v; };
+  const changeFs = d => { const v = Math.max(12, Math.min(34, applyFs() + d)); try { localStorage.setItem('ki_' + fsKey(), JSON.stringify(v)); } catch (e) {} applyFs(); };
+  applyFs(); window.addEventListener('resize', applyFs);
 
   /* ---------- 1. ВИД ---------- */
   const NAVY = '#0b2a5b', NAVY2 = '#123a7a', GOLD = '#f2b632', BG = '#eef2f8';
   const css = `
     html, body { background:${BG} !important; }
-    body, body * { font-size:26px !important; line-height:1.45 !important; font-family:"Segoe UI",Arial,sans-serif !important; }
-    h1, h1 * { font-size:40px !important; } h2, h2 * { font-size:34px !important; } h3, h3 * { font-size:30px !important; }
+    body, body * { font-size:var(--ki-fs) !important; line-height:1.4 !important; font-family:"Segoe UI",Arial,sans-serif !important; }
+    h1, h1 * { font-size:calc(var(--ki-fs) * 1.5) !important; } h2, h2 * { font-size:calc(var(--ki-fs) * 1.3) !important; } h3, h3 * { font-size:calc(var(--ki-fs) * 1.15) !important; }
     body { color:#0d1626 !important; }
     header, nav, .topbar, .header { background:linear-gradient(90deg,${NAVY},${NAVY2}) !important; color:#fff !important; }
     input, select, textarea {
-      min-height:60px !important; padding:10px 14px !important; border:2px solid #8aa0c8 !important;
+      min-height:calc(var(--ki-fs) * 2.2) !important; padding:6px 10px !important; border:2px solid #8aa0c8 !important;
       border-radius:12px !important; background:#fff !important; color:#0d1626 !important;
     }
-    textarea { min-height:140px !important; }
+    textarea { min-height:calc(var(--ki-fs) * 5) !important; }
     input:focus, select:focus, textarea:focus { outline:3px solid ${GOLD} !important; border-color:${NAVY} !important; }
     button {
-      min-height:60px !important; padding:10px 22px !important; margin:4px !important;
+      min-height:calc(var(--ki-fs) * 2.2) !important; padding:6px 16px !important; margin:4px !important;
       border-radius:14px !important; font-weight:600 !important; cursor:pointer !important;
     }
     table { border-collapse:separate !important; border-spacing:0 8px !important; width:100% !important; }
@@ -36,9 +40,11 @@
     #ki-panel { position:fixed; right:18px; bottom:18px; z-index:2147483000; width:340px;
       background:linear-gradient(160deg,${NAVY},${NAVY2}); border-radius:20px; padding:16px;
       box-shadow:0 10px 30px rgba(0,0,0,.4); color:#fff; }
-    #ki-panel .ki-t { font-size:28px !important; font-weight:700 !important; color:${GOLD}; text-align:center; margin-bottom:8px; cursor:pointer; }
+    #ki-panel .ki-t { font-size:24px !important; font-weight:700 !important; color:${GOLD}; text-align:center; margin-bottom:8px; cursor:pointer; }
     #ki-panel button { display:block; width:100%; margin:8px 0 !important; text-align:left;
-      background:#fff !important; color:${NAVY} !important; border:none !important; font-size:24px !important; }
+      background:#fff !important; color:${NAVY} !important; border:none !important; font-size:22px !important; min-height:54px !important; }
+    #ki-panel .ki-fs { display:flex; gap:8px; } #ki-panel .ki-fs button { text-align:center; }
+    #ki-panel.ki-min .ki-fs { display:none; }
     #ki-panel button:disabled { opacity:.35; cursor:default !important; }
     #ki-panel.ki-min button { display:none; }
     #ki-status { font-size:20px !important; color:#dfe7f5; text-align:center; min-height:26px; }
@@ -60,12 +66,9 @@
     #ki-panel.ki-min .ki-t { margin:0; }
     #ki-panel.ki-min #ki-status { display:none; }
     @media (max-width:760px){
-      body, body *{ font-size:20px !important; }
-      h1, h1 *{ font-size:30px !important; } h2, h2 *{ font-size:26px !important; } h3, h3 *{ font-size:23px !important; }
+      td, th { padding:6px !important; }
       #ki-panel{ right:10px; bottom:10px; width:calc(100vw - 20px); max-height:80vh; overflow:auto; }
       #ki-panel.ki-min{ width:auto; }
-      #ki-panel button{ font-size:21px !important; min-height:56px !important; }
-      table{ display:block !important; overflow-x:auto !important; }
     }
   `;
   const st = document.createElement('style'); st.id = 'ki-skin'; st.textContent = css; document.head.appendChild(st);
@@ -224,10 +227,12 @@
         <button data-a="for">✅ Всички присъстващи ЗА</button>
         <button data-a="docs">📄 Всички документи</button>
         <button data-a="print">🖨️ Печат на термопринтер</button>
+        <div class="ki-fs"><button data-a="fsm">А−</button><button data-a="fsp">А+</button></div>
         <div id="ki-status"></div>`;
       p.querySelector('.ki-t').onclick = () => { p.classList.toggle('ki-min'); LS.set('min', p.classList.contains('ki-min')); };
       p.addEventListener('click', async (e) => {
         const a = e.target.closest('button')?.dataset.a; if (!a) return;
+        if (a === 'fsm' || a === 'fsp') { changeFs(a === 'fsp' ? 2 : -2); return; }
         if (PHONE()) { p.classList.add('ki-min'); }
         try {
           if (a === 'new') quickMeeting();
