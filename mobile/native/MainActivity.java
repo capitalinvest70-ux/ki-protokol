@@ -177,7 +177,12 @@ public class MainActivity extends BridgeActivity {
                 if (text != null && !text.isEmpty()) s.putExtra(Intent.EXTRA_TEXT, text);
                 if ("email".equals(target)) {
                     if (bcc != null && !bcc.trim().isEmpty()) s.putExtra(Intent.EXTRA_BCC, bcc.split("\\s*,\\s*"));
-                    s.setSelector(new Intent(Intent.ACTION_SENDTO, Uri.parse("mailto:")));
+                    // Направо в Gmail; ако го няма – в друга поща; накрая – общ списък
+                    String[] mailApps = {"com.google.android.gm", "com.microsoft.office.outlook", "com.samsung.android.email.provider", "com.yahoo.mobile.client.android.mail"};
+                    for (String pkg : mailApps) {
+                        try { s.setPackage(pkg); startActivity(s); return; } catch (ActivityNotFoundException ignored) { }
+                    }
+                    s.setPackage(null);
                     startActivity(Intent.createChooser(s, "Изпрати по имейл"));
                     return;
                 }

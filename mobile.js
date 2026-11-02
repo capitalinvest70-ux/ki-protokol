@@ -1347,7 +1347,7 @@
     const on = (k, f) => { const el = m.querySelector(`[data-x=${k}]`); if (el) el.onclick = f; };
     const dl = () => saveBlob(blob, name);
     const nat = !!(uri && N && N.shareTo);
-    const deskNote = () => { if (DESK) toast('Файлът е копиран и маркиран в папката – постави го с Ctrl+V'); };
+    const deskNote = () => { toast(DESK ? 'Файлът е копиран и маркиран в папката – постави го с Ctrl+V' : 'Отварям пощата… (файлът е прикачен)'); };
     on('close', () => m.remove());
     on('bt', () => { m.remove(); window.KIPrint.open({ title: name.replace(/\.[a-z]+$/i, ''), html: opt.html }); });
     on('open', () => { if (uri) N.openFile(uri, mime); else window.open(URL.createObjectURL(blob), '_blank'); });
