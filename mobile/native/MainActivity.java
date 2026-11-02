@@ -6,7 +6,9 @@ import android.app.DownloadManager;
 import android.bluetooth.BluetoothAdapter;
 import android.bluetooth.BluetoothDevice;
 import android.bluetooth.BluetoothSocket;
+import android.content.ActivityNotFoundException;
 import android.content.ContentValues;
+import android.content.pm.ResolveInfo;
 import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.provider.MediaStore;
@@ -163,6 +165,58 @@ public class MainActivity extends BridgeActivity {
         });
     }
 
+    // Изпращане към конкретно приложение: имейл (със скрито копие до всички), Viber, SharpFox (принтер C80)
+    private void shareTo(String uri, String mime, String target, String bcc, String subject, String text) {
+        runOnUiThread(() -> {
+            try {
+                Intent s = new Intent(Intent.ACTION_SEND);
+                s.setType(mime);
+                s.putExtra(Intent.EXTRA_STREAM, Uri.parse(uri));
+                s.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+                if (subject != null && !subject.isEmpty()) s.putExtra(Intent.EXTRA_SUBJECT, subject);
+                if (text != null && !text.isEmpty()) s.putExtra(Intent.EXTRA_TEXT, text);
+                if ("email".equals(target)) {
+                    if (bcc != null && !bcc.trim().isEmpty()) s.putExtra(Intent.EXTRA_BCC, bcc.split("\\s*,\\s*"));
+                    s.setSelector(new Intent(Intent.ACTION_SENDTO, Uri.parse("mailto:")));
+                    startActivity(Intent.createChooser(s, "Изпрати по имейл"));
+                    return;
+                }
+                if ("viber".equals(target)) {
+                    s.setPackage("com.viber.voip");
+                    try { startActivity(s); }
+                    catch (ActivityNotFoundException e) {
+                        s.setPackage(null);
+                        Toast.makeText(this, "Viber не е инсталиран", Toast.LENGTH_SHORT).show();
+                        startActivity(Intent.createChooser(s, "Изпрати"));
+                    }
+                    return;
+                }
+                if ("c80".equals(target)) {
+                    String pkg = findApp(s, new String[]{"sharpfox", "bytecintia", "flashlabel"});
+                    if (pkg != null) { s.setPackage(pkg); startActivity(s); return; }
+                    Toast.makeText(this, "Не намерих SharpFox – избери приложението на принтера", Toast.LENGTH_LONG).show();
+                    startActivity(Intent.createChooser(s, "Печат на C80 – избери SharpFox"));
+                    return;
+                }
+                startActivity(Intent.createChooser(s, "Изпрати"));
+            } catch (Exception e) {
+                Toast.makeText(this, "Не може да се изпрати: " + e.getMessage(), Toast.LENGTH_LONG).show();
+            }
+        });
+    }
+
+    private String findApp(Intent s, String[] keys) {
+        try {
+            PackageManager pm = getPackageManager();
+            for (ResolveInfo r : pm.queryIntentActivities(s, 0)) {
+                String pkg = r.activityInfo.packageName.toLowerCase();
+                String label = String.valueOf(r.loadLabel(pm)).toLowerCase();
+                for (String k : keys) if (pkg.contains(k) || label.contains(k)) return r.activityInfo.packageName;
+            }
+        } catch (Exception ignored) { }
+        return null;
+    }
+
     /* ---------- Печат ---------- */
     private boolean btAllowed() {
         return Build.VERSION.SDK_INT < 31 || checkSelfPermission(Manifest.permission.BLUETOOTH_CONNECT) == PackageManager.PERMISSION_GRANTED;
@@ -307,6 +361,11 @@ public class MainActivity extends BridgeActivity {
         @JavascriptInterface
         public void shareFile(String uri, String mime) {
             MainActivity.this.shareFile(uri, mime);
+        }
+
+        @JavascriptInterface
+        public void shareTo(String uri, String mime, String target, String bcc, String subject, String text) {
+            MainActivity.this.shareTo(uri, mime, target, bcc, subject, text);
         }
 
         @JavascriptInterface

@@ -119,6 +119,16 @@
     else { s[key] = val; await idb.set(mid + ':' + key, val); }
   }
 
+  // Имейл и телефон за всеки обект – пазят се на телефона (телефонът отива и в програмата)
+  const contactOf = async unitId => (await idb.get('c:u' + unitId).catch(() => null)) || {};
+  const putContact = (unitId, c) => idb.set('c:u' + unitId, c).catch(() => {});
+  async function contactsFor(units) {
+    const out = [];
+    for (const u of units) { const c = await contactOf(u.id); const email = c.email || ''; const phone = c.phone || u.phone || ''; if (email || phone) out.push({ u, email, phone }); }
+    return out;
+  }
+  const validEmail = e => /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(e);
+
   /* ---------- Вид ---------- */
   if (!document.querySelector('meta[name=viewport]')) {
     const vm = document.createElement('meta'); vm.name = 'viewport'; vm.content = 'width=device-width, initial-scale=1, viewport-fit=cover';
@@ -763,6 +773,7 @@
     let status = a ? a.status || 'Собственик' : 'Собственик';
     let ptype = a && (a.proxy_auth_type === 'oral' || a.proxy_auth_type === 'устно упълномощен') ? 'oral' : 'written';
     let photo = sigs['px' + unitId] || null;
+    const contact = await contactOf(unitId);
     const m = sheet(`<h2>${esc(unitLabel(u))} <span class="mut">· ${pct(u.ideal_parts)}</span></h2>
       <div class="mut">Собственик: ${esc(u.owner_name || '—')}</div>
       <label class="l">Кой присъства</label>
@@ -780,6 +791,9 @@
         <div class="mut" style="margin-top:8px">Един пълномощник може да представлява най-много трима собственици.</div>
       </div>
       ${padHtml(status === 'Пълномощник' ? 'Подпис на пълномощника' : 'Подпис', sigs['u' + unitId])}
+      <div class="grid2" style="margin-top:4px"><div><label class="l">📧 Имейл</label><input id="k-em" type="email" inputmode="email" autocapitalize="none" value="${esc(contact.email || '')}" placeholder="за копие от протокола"></div>
+      <div><label class="l">📞 Телефон</label><input id="k-tel" type="tel" inputmode="tel" value="${esc(contact.phone || u.phone || '')}" placeholder="08…"></div></div>
+      <div class="mut" style="margin-top:4px">По закон протоколът се изпраща по имейл на тези, които са дали имейл.</div>
       <button class="btn big ok" data-sh="save">✓ ${a ? 'Запази' : 'Присъства – запази'}</button>
       ${a && !closed ? '<button class="btn out" data-sh="remove" style="color:var(--bad)">Не присъства – махни</button>' : ''}
       <button class="btn lite" data-sh="cancel">Отказ</button>`);
@@ -808,8 +822,16 @@
         if (norm(name) === norm(u.owner_name)) { toast('Пълномощникът е друг човек, не собственикът', true); return; }
         if (proxyCount(d, name, unitId) >= 3) { toast(`${name} вече представлява 3 обекта – по закон не може повече`, true); return; }
       }
+      const email = m.querySelector('#k-em').value.trim(), tel = m.querySelector('#k-tel').value.trim();
+      if (email && !validEmail(email)) { m.querySelector('#k-em').classList.add('need'); toast('Имейлът не изглежда правилен', true); return; }
       const img = pad.png();
       const ok = await run('Записвам…', async () => {
+        if (email !== (contact.email || '') || tel !== (contact.phone || '')) await putContact(unitId, { email, phone: tel, at: stamp() });
+        if (tel && tel !== (u.phone || '')) {
+          // телефонът отива и в Програма за протокол (картата на обекта)
+          await patch('/api/units/' + unitId, { unit_no: u.unit_no, floor: u.floor, entrance: u.entrance || '', type: u.type, owner_name: u.owner_name || '', phone: tel,
+            ideal_parts: num(u.ideal_parts), residents_count: num(u.residents_count), dogs_count: num(u.dogs_count), common_rooms_used: num(u.common_rooms_used), uses_elevator: u.uses_elevator == null ? true : !!num(u.uses_elevator) }).catch(() => {});
+        }
         if (!closed) await saveAtt(mid, unitId, { person_name: name, status, proxy_auth_type: ptype });
         if (img) await putSig(mid, 'u' + unitId, { img, name, at: stamp() });
         if (status === 'Пълномощник' && ptype === 'written' && photo) await putSig(mid, 'px' + unitId, photo);
@@ -918,7 +940,8 @@
     });
     return t;
   }
-  const resBox = (t, base) => { const f = v => pct(base ? v / base * 100 : 0); return `<div class="res"><div class="za"><b>${f(t['ЗА'])}</b>ЗА</div><div class="pr"><b>${f(t['ПРОТИВ'])}</b>ПРОТИВ</div><div class="vz"><b>${f(t['ВЪЗДЪРЖАЛ СЕ'])}</b>ВЪЗД.</div></div><div class="mut" style="margin-top:4px;text-align:center">от идеалните части на присъстващите</div>`; };
+  // Показваме идеалните части (както в протокола: „ЗА – 55,32% ид. части“)
+  const resBox = (t, present) => `<div class="res"><div class="za"><b>${pct(t['ЗА'])}</b>ЗА</div><div class="pr"><b>${pct(t['ПРОТИВ'])}</b>ПРОТИВ</div><div class="vz"><b>${pct(t['ВЪЗДЪРЖАЛ СЕ'])}</b>ВЪЗД.</div></div><div class="mut" style="margin-top:4px;text-align:center">идеални части${present != null ? ` · присъстват ${pct(present)} ид. ч.` : ''}</div>`;
 
   async function scrChair(mid, d, keep) {
     top('Председател и протоколчик', d.building ? d.building.name : '', `#/m/${mid}/ppl`);
@@ -963,7 +986,7 @@
         const t = tally(att, sv, x => num(x.candidate_id) === num(k.id));
         return `<div class="vrow"><div class="row"><div class="grow"><div class="ttl">${esc(k.candidate_name)}</div><div class="mut">${esc(k.candidate_org || (k.property_no ? 'ап. ' + k.property_no : ''))}</div></div>
           ${num(k.is_selected) ? '<span class="chip ok">✓ Избран</span>' : ''}</div>
-          <div class="mut" style="margin-top:6px">ЗА: ${pct(quorumOf(d) ? t['ЗА'] / quorumOf(d) * 100 : 0)} от присъстващите · гласували ${t.n} от ${att.length}</div>
+          <div class="mut" style="margin-top:6px">ЗА: ${pct(t['ЗА'])} ид. ч. · гласували ${t.n} от ${att.length}</div>
           <div class="grid2" style="margin-top:8px"><button class="btn ok" data-act="secAll" data-c="${k.id}" ${att.length ? '' : 'disabled'}>✅ Всички ЗА</button>
           ${num(k.is_selected) ? `<button class="btn lite" data-act="secOpen" data-c="${k.id}">По един ›</button>` : `<button class="btn" data-act="secSel" data-c="${k.id}">✓ Избран</button>`}</div>
           <div class="k-secv" data-c="${k.id}" hidden>${att.map(a => { const v = sv.find(x => num(x.candidate_id) === num(k.id) && num(x.attendance_id) === num(a.id)); return `<div class="vrow"><div class="who">${esc(a.represents)} · ${esc(a.person_name || '')}</div>${voteSeg(v && v.vote, 'secVote', `data-c="${k.id}" data-a="${a.id}"`)}</div>`; }).join('')}</div></div>`;
@@ -1010,7 +1033,7 @@
         const done = num(a.is_completed) === 1;
         const st = done ? '<span class="chip ok">✓ Приключена</span>' : t.n && !t.none ? '<span class="chip">Гласувана</span>' : t.n ? `<span class="chip warn">${t.n}/${att.length}</span>` : '<span class="chip bad">Не е гласувана</span>';
         return `<button class="item" data-go="#/m/${mid}/p/${a.id}"><div class="num ${done ? 'ok' : ''}">${a.item_no}</div>
-          <div class="grow"><div class="ttl" style="font-weight:600">${esc(a.title)}</div><div style="margin-top:4px">${st}${t.n ? ` <span class="mut">ЗА ${pct(quorumOf(d) ? t['ЗА'] / quorumOf(d) * 100 : 0)}</span>` : ''}</div></div><span class="arr">›</span></button>`;
+          <div class="grow"><div class="ttl" style="font-weight:600">${esc(a.title)}</div><div style="margin-top:4px">${st}${t.n ? ` <span class="mut">ЗА ${pct(t['ЗА'])} ид. ч.</span>` : ''}</div></div><span class="arr">›</span></button>`;
       }).join('') || '<div class="empty">Няма точки в дневния ред</div>'}
       ${closed ? '' : `<div class="card"><h2>Още</h2>
         <button class="btn lite" data-act="fill">✍️ Готови текстове от последното събрание</button>
@@ -1042,7 +1065,7 @@
       ${special ? `<button class="btn out" data-go="#/m/${mid}/ppl">🧑‍💼 Имена и суми – „Хора и такси“ ›</button>` : fixed ? `<button class="btn out" data-act="full" data-m="${mid}" data-p="${aid}">⚙️ Подробности в пълната версия ›</button>` : ''}</div>
 
       <div class="card"><h2>🗳️ Гласуване</h2>${resBox(t, quorumOf(d))}
-      <div class="mut" style="margin-top:8px">${att.length ? `${pass ? '✅ Решението се приема' : '❌ Още не се приема'} · ЗА ${pct(zaP)} от ${a.majority_base === 'present' ? 'присъстващите' : 'всички'} · гласували ${t.n} от ${att.length}` : 'Няма присъстващи'}</div>
+      <div class="mut" style="margin-top:8px">${att.length ? `${pass ? '✅ Решението се приема' : '❌ Още не се приема'} · ЗА ${pct(t['ЗА'])} ид. ч., нужни ${/\+/.test(req) ? 'над ' : ''}${pct(base * reqN / 100)} ид. ч. · гласували ${t.n} от ${att.length}` : 'Няма присъстващи'}</div>
       ${closed ? '' : `<div class="grid2" style="margin-top:10px"><button class="btn ok big" data-act="ptAll" data-v="ЗА" ${att.length ? '' : 'disabled'}>✅ Всички ЗА</button>
         <button class="btn lite" data-act="ptAllMenu" ${att.length ? '' : 'disabled'}>Всички други…</button></div>`}
       <div style="margin-top:10px">${att.map(p => { const v = votes.find(x => num(x.attendance_id) === num(p.id)); return `<div class="vrow"><div class="who">${esc(p.represents)} · ${esc(p.person_name || '')} <span class="mut">${pct(p.ideal_parts)}</span></div>${closed ? `<b>${esc(v ? v.vote : '—')}</b>` : voteSeg(v && v.vote, 'vote', `data-a="${p.id}"`)}</div>`; }).join('')}</div></div>
@@ -1093,6 +1116,8 @@
     const bname = (d.building || {}).name || '';
     const ref = closed ? (m.closed_at ? String(m.closed_at).slice(0, 10) : m.meeting_date) : m.meeting_date;
     const mgr = m.meeting_type !== 'regular';
+    const contacts = await contactsFor(d.units || []);
+    const emailsN = new Set(contacts.map(c => c.email).filter(validEmail)).size;
     html(`<div class="card"><h2>${iss.length ? `⚠️ Липсват ${iss.length} неща` : '✅ Всичко задължително е готово'}</h2>
       ${iss.slice(0, 30).map(([t, where]) => `<div class="iss" ${where ? `data-act="fix" data-w="${esc(where)}" style="cursor:pointer"` : ''}>• ${esc(t)} ${where ? '<span class="mut">›</span>' : ''}</div>`).join('')}
       ${warn.map(([t, where]) => `<div class="iss w" ${where ? `data-act="fix" data-w="${esc(where)}" style="cursor:pointer"` : ''}>⚠️ ${esc(t)} ${where ? '<span class="mut">›</span>' : ''}</div>`).join('')}
@@ -1110,14 +1135,20 @@
       <div class="mut" style="margin-top:6px">Подписите се пазят на този телефон и влизат в PDF файловете отдолу.</div></div>
 
       <div class="card"><h2>📄 Документи</h2>
-      ${docBtn('pdf', '🖋️', 'Протокол с подписи – PDF', 'Записва в Изтегляния/Протоколи', 'data-doc="protocol"')}
-      ${docBtn('pdf', '👥', 'Присъствен списък с подписи – PDF', 'С копията на пълномощните', 'data-doc="attendance"')}
-      ${docBtn('dl', '⬇️', 'Протокол за Word', 'Без подписи – за редакция', `data-u="protocol-html?download=word" data-n="Протокол ${esc(m.meeting_no)} - ${esc(fileSafe(bname))}.doc"`)}
-      ${mgr ? docBtn('dl', '📝', 'Договор за управление', closed ? 'Сваля файла' : 'След закриване', `data-u="contract-docx" data-n="Договор - ${esc(fileSafe(bname))}.docx"`) : ''}
-      ${mgr ? docBtn('dl', '🏛️', 'Уведомление до общината', closed ? 'Сваля файла' : 'След закриване', `data-u="municipality-notice-docx" data-n="Уведомление община - ${esc(fileSafe(bname))}.docx"`) : ''}
-      ${docBtn('doc', '✉️', 'Покана за събранието', 'Преглед', 'data-u="invitation-html"')}
-      ${docBtn('print', '🖨️', 'Печат на термопринтер', ANDROID ? 'C80 и други по Bluetooth' : 'В приложението')}
+      <div class="mut" style="margin-bottom:8px">Всеки документ: 🖨️ печат на C80 · 📧 имейл · 💬 Viber</div>
+      ${docBtn('pdf', '🖋️', 'Протокол с подписи', 'PDF · ' + (emailsN ? `може да се прати на ${emailsN} с имейл` : 'още няма въведени имейли'), 'data-doc="protocol"')}
+      ${docBtn('pdf', '👥', 'Присъствен списък с подписи', 'PDF · с копията на пълномощните', 'data-doc="attendance"')}
+      ${docBtn('sdoc', '✉️', 'Покана за събранието', 'PDF', 'data-k="invitation"')}
+      ${docBtn('sdoc', '⬇️', 'Протокол за Word', 'Без подписи – за редакция', 'data-k="word"')}
+      ${mgr ? docBtn('sdoc', '📝', 'Договор за управление', closed ? 'Word' : 'След закриване', 'data-k="contract"') : ''}
+      ${mgr ? docBtn('sdoc', '🏛️', 'Уведомление до общината', closed ? 'Word' : 'След закриване', 'data-k="notice"') : ''}
+      ${docBtn('print', '🧾', 'Термо ролка 58/80 мм', 'Касов термопринтер по Bluetooth/мрежа')}
       </div>
+
+      <div class="card"><h2>📇 Имейли и телефони (${contacts.length})</h2>
+      ${contacts.length ? contacts.map(c => `<div class="iss">${esc(unitLabel(c.u))} · ${esc(c.u.owner_name || ((d.attendance || []).find(x => num(x.unit_id) === num(c.u.id)) || {}).person_name || '')}<br><span class="mut">${esc([c.email, c.phone].filter(Boolean).join(' · '))}</span></div>`).join('')
+        : '<div class="mut">Въвеждат се при подписа на всеки присъстващ (раздел „Присъстващи“).</div>'}
+      ${emailsN ? `<button class="btn gold" data-act="pdf" data-doc="protocol">📨 Изпрати протокола на всички с имейл (${emailsN})</button>` : ''}</div>
 
       <div class="card"><h2>⚖️ По закона (ЗУЕС)</h2>
       <div class="iss">📅 Протоколът се изготвя и подписва до <b>${bgDate(addDays(ref, 7))}</b> (7 дни).</div>
@@ -1213,22 +1244,52 @@
   }
   const b64 = async blob => { const u = new Uint8Array(await blob.arrayBuffer()); let s = ''; for (let i = 0; i < u.length; i += 0x8000) s += String.fromCharCode.apply(null, u.subarray(i, i + 0x8000)); return btoa(s); };
   // Записва файла: в приложението – в Изтегляния/Протоколи и предлага „Изпрати“; в браузъра – сваляне
-  async function deliver(blob, name) {
+  // Лист за готовия файл: печат на C80 · имейл · Viber · до всички с имейл · отвори
+  async function deliver(blob, name, opt = {}) {
+    const mime = blob.type || 'application/pdf', isPdf = /pdf/.test(mime);
+    const subject = opt.subject || name.replace(/\.[a-z]+$/i, '');
+    const text = opt.text || `Здравейте,\n\nИзпращаме Ви „${subject}“.\n\nПоздрави,\n${COMPANY}`;
+    const emails = opt.emails || [];
+    let uri = null;
     if (ANDROID && window.KIAndroid.saveFile) {
-      const uri = window.KIAndroid.saveFile(name, await b64(blob), blob.type || 'application/pdf');
+      uri = window.KIAndroid.saveFile(name, await b64(blob), mime);
       if (!uri || /^ERR/.test(uri)) throw new Error('Не можах да запиша файла: ' + (uri || ''));
-      const m = sheet(`<h2>✅ Записано</h2><div class="mut">Изтегляния / Протоколи / ${esc(name)}</div>
-        <button class="btn big" data-x="open">📖 Отвори</button><button class="btn lite" data-x="share">📤 Изпрати (Viber, имейл…)</button><button class="btn out" data-x="close">Готово</button>`);
-      m.querySelector('[data-x=open]').onclick = () => { window.KIAndroid.openFile(uri, blob.type || 'application/pdf'); };
-      m.querySelector('[data-x=share]').onclick = () => { window.KIAndroid.shareFile(uri, blob.type || 'application/pdf'); };
-      m.querySelector('[data-x=close]').onclick = () => m.remove();
-      return;
     }
-    if (navigator.canShare && phone) {
+    const m = sheet(`<h2>✅ ${esc(opt.title || 'Готово')}</h2><div class="mut">${uri ? 'Записано в Изтегляния / Протоколи / ' : ''}${esc(name)}</div>
+      ${emails.length ? `<button class="btn big gold col" data-x="all"><span>📨 Изпрати на всички с имейл (${emails.length})</span><span style="font-weight:400;font-size:.8em">отваря пощата с всички адреси като скрито копие</span></button>` : ''}
+      <div class="grid2" style="margin-top:10px">
+        ${isPdf ? '<button class="btn" data-x="c80">🖨️ Печат C80</button>' : '<button class="btn" data-x="open">📖 Отвори</button>'}
+        <button class="btn lite" data-x="email">📧 Имейл</button>
+        <button class="btn lite" data-x="viber" style="color:#7360f2">💬 Viber</button>
+        <button class="btn lite" data-x="share">📤 Друго…</button></div>
+      ${isPdf ? '<button class="btn out" data-x="open">📖 Отвори</button>' : ''}
+      ${isPdf ? '<div class="mut" style="margin-top:6px">Печат C80: файлът се праща към приложението SharpFox на принтера ByteCintia.</div>' : ''}
+      <button class="btn out" data-x="close">Готово</button>`);
+    const on = (k, f) => { const el = m.querySelector(`[data-x=${k}]`); if (el) el.onclick = f; };
+    const dl = () => saveBlob(blob, name);
+    const nat = !!(uri && window.KIAndroid.shareTo);
+    on('close', () => m.remove());
+    on('open', () => { if (uri) window.KIAndroid.openFile(uri, mime); else window.open(URL.createObjectURL(blob), '_blank'); });
+    on('c80', () => { if (nat) window.KIAndroid.shareTo(uri, mime, 'c80', '', subject, ''); else { dl(); toast('PDF-ът е свален – отпечатай го през SharpFox или драйвера на C80'); } });
+    on('email', () => { if (nat) window.KIAndroid.shareTo(uri, mime, 'email', '', subject, text); else { dl(); location.href = `mailto:?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(text + '\n\n(файлът е свален – прикачете го)')}`; } });
+    on('all', () => {
+      const list = emails.join(',');
+      if (nat) window.KIAndroid.shareTo(uri, mime, 'email', list, subject, text);
+      else { dl(); location.href = `mailto:?bcc=${encodeURIComponent(list)}&subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(text + '\n\n(файлът е свален – прикачете го)')}`; }
+    });
+    on('viber', () => { if (nat) window.KIAndroid.shareTo(uri, mime, 'viber', '', subject, subject); else if (!webShare(blob, name)) dl(); });
+    on('share', () => { if (uri) window.KIAndroid.shareFile(uri, mime); else if (!webShare(blob, name)) dl(); });
+  }
+  function webShare(blob, name) {
+    try {
       const file = new File([blob], name, { type: blob.type });
-      if (navigator.canShare({ files: [file] })) { try { await navigator.share({ files: [file], title: name }); return; } catch (e) { if (e && e.name === 'AbortError') return; } }
-    }
-    saveBlob(blob, name);
+      if (navigator.canShare && navigator.canShare({ files: [file] })) { navigator.share({ files: [file], title: name }).catch(() => {}); return true; }
+    } catch (e) {}
+    return false;
+  }
+  async function meetingEmails(mid) {
+    const d = D.m[mid] || await loadMeeting(mid);
+    return [...new Set((await contactsFor(d.units || [])).map(c => c.email).filter(validEmail))];
   }
 
   const sigImg = (s, h) => s ? `<img src="${s.img}" style="height:${h || 40}px;max-width:220px;object-fit:contain;vertical-align:middle">` : '';
@@ -1283,7 +1344,32 @@
       const pages = await htmlToPages(htmlStr, land);
       return { blob: buildPdf(pages, land), name: `${kind === 'protocol' ? 'Протокол' : 'Присъствен списък'} ${d.meeting.meeting_no} - ${bname} - ${bgDate(d.meeting.meeting_date)}.pdf` };
     });
-    if (r) await deliver(r.blob, r.name).catch(e => toast(e.message || String(e), true));
+    if (!r) return;
+    const emails = kind === 'protocol' ? await meetingEmails(mid) : [];
+    const bn = (d.building || {}).name || '';
+    await deliver(r.blob, r.name, {
+      title: kind === 'protocol' ? 'Протоколът е готов' : 'Присъственият списък е готов', emails,
+      subject: `${kind === 'protocol' ? 'Протокол' : 'Присъствен списък'} от общо събрание – ${bn}, ${bgDate(d.meeting.meeting_date)}`,
+      text: kind === 'protocol' ? `Здравейте,\n\nПрилагаме протокола от общото събрание на етажната собственост – ${bn} (${(d.building || {}).address || ''}), проведено на ${bgDate(d.meeting.meeting_date)}.\n\nПоздрави,\n${COMPANY}` : '',
+    }).catch(e => toast(e.message || String(e), true));
+  }
+
+  // Документите от Програма за протокол (Word, договор, уведомление, покана) – същият лист с печат/имейл/Viber
+  async function serverDoc(kind) {
+    const mid = curMid(), d = D.m[mid], bn = fileSafe((d.building || {}).name), no = d.meeting.meeting_no;
+    const K = {
+      word: ['protocol-html?download=word', `Протокол ${no} - ${bn}.doc`, 'application/msword'],
+      contract: ['contract-docx', `Договор - ${bn}.docx`, 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'],
+      notice: ['municipality-notice-docx', `Уведомление община - ${bn}.docx`, 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'],
+      invitation: ['invitation-html', `Покана - ${bn} - ${bgDate(d.meeting.meeting_date)}.pdf`, 'pdf'],
+    }[kind];
+    const r = await run(kind === 'invitation' ? 'Правя PDF на поканата…' : 'Свалям…', async () => {
+      const res = await fetch(`/api/meetings/${mid}/${K[0]}`, { credentials: 'same-origin' });
+      if (!res.ok) throw new Error((await res.text()).replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 200) || 'Документът още не е готов');
+      if (K[2] === 'pdf') return { blob: buildPdf(await htmlToPages(await res.text(), false), false) };
+      return { blob: new Blob([await res.blob()], { type: K[2] }) };
+    });
+    if (r) await deliver(r.blob, K[1], { title: 'Документът е готов' }).catch(e => toast(e.message || String(e), true));
   }
 
   /* ---------- Съобщение за протокола / протоколи за поставяне (чл. 13 и чл. 16 ЗУЕС) ---------- */
@@ -1333,7 +1419,7 @@
           <p>Настоящият протокол се състави в един екземпляр.</p>${signs}</div>`;
       }
       const r = await run('Правя PDF…', async () => ({ blob: buildPdf(await htmlToPages(`<!doctype html><html><head><meta charset="utf-8">${style}</head><body>${body}</body></html>`, false), false) }));
-      if (r) await deliver(r.blob, `${kind === 'invitation' ? 'Протокол поставяне покана' : 'Съобщение и протокол поставяне'} - ${fileSafe(b.name)} - ${bgDate(v.date)}.pdf`).catch(e => toast(e.message || String(e), true));
+      if (r) await deliver(r.blob, `${kind === 'invitation' ? 'Протокол поставяне покана' : 'Съобщение и протокол поставяне'} - ${fileSafe(b.name)} - ${bgDate(v.date)}.pdf`, { title: 'Готово' }).catch(e => toast(e.message || String(e), true));
       render(true);
     };
   }
@@ -1591,6 +1677,7 @@
     },
     signRole: el => signRole(el.dataset.k, el.dataset.r, el.dataset.n),
     pdf: el => makePdf(el.dataset.doc),
+    sdoc: el => serverDoc(el.dataset.k),
     posting: el => postingSheet(el.dataset.kind),
     doc: el => openDoc(el.dataset.u),
     dl: el => download(el.dataset.u, el.dataset.n),
