@@ -6,7 +6,13 @@ import android.app.DownloadManager;
 import android.bluetooth.BluetoothAdapter;
 import android.bluetooth.BluetoothDevice;
 import android.bluetooth.BluetoothSocket;
+import android.content.ContentValues;
+import android.content.Intent;
 import android.content.pm.PackageManager;
+import android.provider.MediaStore;
+import androidx.core.content.FileProvider;
+import java.io.File;
+import java.io.FileOutputStream;
 import android.os.Build;
 import android.util.Base64;
 import android.net.Uri;
@@ -103,6 +109,58 @@ public class MainActivity extends BridgeActivity {
         } catch (Exception e) {
             runOnUiThread(() -> Toast.makeText(this, "Грешка при сваляне: " + e.getMessage(), Toast.LENGTH_LONG).show());
         }
+    }
+
+    /* ---------- Файлове (PDF с подписи) ---------- */
+    private String saveFile(String name, String b64, String mime) {
+        try {
+            byte[] data = Base64.decode(b64, Base64.DEFAULT);
+            if (Build.VERSION.SDK_INT >= 29) {
+                ContentValues v = new ContentValues();
+                v.put(MediaStore.MediaColumns.DISPLAY_NAME, name);
+                v.put(MediaStore.MediaColumns.MIME_TYPE, mime);
+                v.put(MediaStore.MediaColumns.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS + "/Протоколи");
+                Uri uri = getContentResolver().insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, v);
+                if (uri == null) return "ERR няма достъп до Изтегляния";
+                try (OutputStream os = getContentResolver().openOutputStream(uri)) { os.write(data); }
+                return uri.toString();
+            } else {
+                File dir = new File(getExternalFilesDir(Environment.DIRECTORY_DOCUMENTS), "Протоколи");
+                if (!dir.exists()) dir.mkdirs();
+                File f = new File(dir, name);
+                try (FileOutputStream os = new FileOutputStream(f)) { os.write(data); }
+                return FileProvider.getUriForFile(this, getPackageName() + ".fileprovider", f).toString();
+            }
+        } catch (Exception e) {
+            return "ERR " + e.getMessage();
+        }
+    }
+
+    private void openFile(String uri, String mime) {
+        runOnUiThread(() -> {
+            try {
+                Intent i = new Intent(Intent.ACTION_VIEW);
+                i.setDataAndType(Uri.parse(uri), mime);
+                i.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_ACTIVITY_NEW_TASK);
+                startActivity(i);
+            } catch (Exception e) {
+                Toast.makeText(this, "Няма приложение за PDF. Файлът е в Изтегляния/Протоколи.", Toast.LENGTH_LONG).show();
+            }
+        });
+    }
+
+    private void shareFile(String uri, String mime) {
+        runOnUiThread(() -> {
+            try {
+                Intent s = new Intent(Intent.ACTION_SEND);
+                s.setType(mime);
+                s.putExtra(Intent.EXTRA_STREAM, Uri.parse(uri));
+                s.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+                startActivity(Intent.createChooser(s, "Изпрати"));
+            } catch (Exception e) {
+                Toast.makeText(this, "Не може да се изпрати: " + e.getMessage(), Toast.LENGTH_LONG).show();
+            }
+        });
     }
 
     /* ---------- Печат ---------- */
@@ -234,6 +292,21 @@ public class MainActivity extends BridgeActivity {
         @JavascriptInterface
         public void download(String url, String name) {
             MainActivity.this.download(url, name, null);
+        }
+
+        @JavascriptInterface
+        public String saveFile(String name, String b64, String mime) {
+            return MainActivity.this.saveFile(name, b64, mime);
+        }
+
+        @JavascriptInterface
+        public void openFile(String uri, String mime) {
+            MainActivity.this.openFile(uri, mime);
+        }
+
+        @JavascriptInterface
+        public void shareFile(String uri, String mime) {
+            MainActivity.this.shareFile(uri, mime);
         }
 
         @JavascriptInterface
