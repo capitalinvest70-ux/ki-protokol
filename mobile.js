@@ -1205,7 +1205,7 @@
       ${docBtn('sdoc', '⬇️', 'Протокол за Word', 'Без подписи – за редакция', 'data-k="word"')}
       ${mgr ? docBtn('sdoc', '📝', 'Договор за управление', closed ? 'Word' : 'След закриване', 'data-k="contract"') : ''}
       ${mgr ? docBtn('sdoc', '🏛️', 'Уведомление до общината', closed ? 'Word' : 'След закриване', 'data-k="notice"') : ''}
-      ${docBtn('print', '🧾', 'Термо ролка 58/80 мм', 'Касов термопринтер по Bluetooth/мрежа')}
+      ${docBtn('print', '🖨️', 'Печат на принтер', 'C80 (A4) или ролка 58/80 мм – документи от програмата')}
       </div>
 
       <div class="card"><h2>📇 Имейли и телефони (${contacts.length})</h2>
@@ -1321,17 +1321,19 @@
     const m = sheet(`<h2>✅ ${esc(opt.title || 'Готово')}</h2><div class="mut">${uri ? 'Записано в Изтегляния / Протоколи / ' : ''}${esc(name)}</div>
       ${emails.length ? `<button class="btn big gold col" data-x="all"><span>📨 Изпрати на всички с имейл (${emails.length})</span><span style="font-weight:400;font-size:.8em">отваря пощата с всички адреси като скрито копие</span></button>` : ''}
       <div class="grid2" style="margin-top:10px">
-        ${isPdf ? '<button class="btn" data-x="c80">🖨️ Печат C80</button>' : '<button class="btn" data-x="open">📖 Отвори</button>'}
+        ${opt.html && window.KIPrint ? '<button class="btn" data-x="bt">🖨️ Печат C80</button>' : isPdf ? '<button class="btn" data-x="c80">🖨️ Печат C80</button>' : '<button class="btn" data-x="open">📖 Отвори</button>'}
         <button class="btn lite" data-x="email">📧 Имейл</button>
         <button class="btn lite" data-x="viber" style="color:#7360f2">💬 Viber</button>
         <button class="btn lite" data-x="share">📤 Друго…</button></div>
       ${isPdf ? '<button class="btn out" data-x="open">📖 Отвори</button>' : ''}
-      ${isPdf ? '<div class="mut" style="margin-top:6px">Печат C80: файлът се праща към приложението SharpFox на принтера ByteCintia.</div>' : ''}
+      ${isPdf && opt.html && window.KIPrint ? '<button class="btn out" data-x="c80">🖨️ Печат чрез SharpFox</button>' : ''}
+      ${isPdf ? '<div class="mut" style="margin-top:6px">„Печат C80“ праща по Bluetooth направо към принтера. Ако не тръгне – „чрез SharpFox“ (приложението на ByteCintia).</div>' : ''}
       <button class="btn out" data-x="close">Готово</button>`);
     const on = (k, f) => { const el = m.querySelector(`[data-x=${k}]`); if (el) el.onclick = f; };
     const dl = () => saveBlob(blob, name);
     const nat = !!(uri && window.KIAndroid.shareTo);
     on('close', () => m.remove());
+    on('bt', () => { m.remove(); window.KIPrint.open({ title: name.replace(/\.pdf$/i, ''), html: opt.html }); });
     on('open', () => { if (uri) window.KIAndroid.openFile(uri, mime); else window.open(URL.createObjectURL(blob), '_blank'); });
     on('c80', () => { if (nat) window.KIAndroid.shareTo(uri, mime, 'c80', '', subject, ''); else { dl(); toast('PDF-ът е свален – отпечатай го през SharpFox или драйвера на C80'); } });
     on('email', () => { if (nat) window.KIAndroid.shareTo(uri, mime, 'email', '', subject, text); else { dl(); location.href = `mailto:?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(text + '\n\n(файлът е свален – прикачете го)')}`; } });
@@ -1405,13 +1407,13 @@
       const htmlStr = kind === 'protocol' ? await signedProtocol(mid) : await signedAttendance(mid);
       busyText('Подреждам страниците…');
       const pages = await htmlToPages(htmlStr, land);
-      return { blob: buildPdf(pages, land), name: `${kind === 'protocol' ? 'Протокол' : 'Присъствен списък'} ${d.meeting.meeting_no} - ${bname} - ${bgDate(d.meeting.meeting_date)}.pdf` };
+      return { html: htmlStr, blob: buildPdf(pages, land), name: `${kind === 'protocol' ? 'Протокол' : 'Присъствен списък'} ${d.meeting.meeting_no} - ${bname} - ${bgDate(d.meeting.meeting_date)}.pdf` };
     });
     if (!r) return;
     const emails = kind === 'protocol' ? await meetingEmails(mid) : [];
     const bn = (d.building || {}).name || '';
     await deliver(r.blob, r.name, {
-      title: kind === 'protocol' ? 'Протоколът е готов' : 'Присъственият списък е готов', emails,
+      title: kind === 'protocol' ? 'Протоколът е готов' : 'Присъственият списък е готов', emails, html: r.html,
       subject: `${kind === 'protocol' ? 'Протокол' : 'Присъствен списък'} от общо събрание – ${bn}, ${bgDate(d.meeting.meeting_date)}`,
       text: kind === 'protocol' ? `Здравейте,\n\nПрилагаме протокола от общото събрание на етажната собственост – ${bn} (${(d.building || {}).address || ''}), проведено на ${bgDate(d.meeting.meeting_date)}.\n\nПоздрави,\n${COMPANY}` : '',
     }).catch(e => toast(e.message || String(e), true));
@@ -1429,10 +1431,10 @@
     const r = await run(kind === 'invitation' ? 'Правя PDF на поканата…' : 'Свалям…', async () => {
       const res = await fetch(`/api/meetings/${mid}/${K[0]}`, { credentials: 'same-origin' });
       if (!res.ok) throw new Error((await res.text()).replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 200) || 'Документът още не е готов');
-      if (K[2] === 'pdf') return { blob: buildPdf(await htmlToPages(await res.text(), false), false) };
+      if (K[2] === 'pdf') { const h = await res.text(); return { html: h, blob: buildPdf(await htmlToPages(h, false), false) }; }
       return { blob: new Blob([await res.blob()], { type: K[2] }) };
     });
-    if (r) await deliver(r.blob, K[1], { title: 'Документът е готов' }).catch(e => toast(e.message || String(e), true));
+    if (r) await deliver(r.blob, K[1], { title: 'Документът е готов', html: r.html }).catch(e => toast(e.message || String(e), true));
   }
 
   /* ---------- Съобщение за протокола / протоколи за поставяне (чл. 13 и чл. 16 ЗУЕС) ---------- */
@@ -1481,8 +1483,9 @@
           <p style="margin-top:28px">Днес, ${bgDate(v.date)} г., в ${esc(v.time)} ч., в сградата с адрес: ${addr}, на основание чл. 16 от Закона за управление на етажната собственост, на видно и общодостъпно място на входа беше поставено съобщение за изготвения протокол от общото събрание на етажната собственост, проведено на ${meetTxt}.</p>
           <p>Настоящият протокол се състави в един екземпляр.</p>${signs}</div>`;
       }
-      const r = await run('Правя PDF…', async () => ({ blob: buildPdf(await htmlToPages(`<!doctype html><html><head><meta charset="utf-8">${style}</head><body>${body}</body></html>`, false), false) }));
-      if (r) await deliver(r.blob, `${kind === 'invitation' ? 'Протокол поставяне покана' : 'Съобщение и протокол поставяне'} - ${fileSafe(b.name)} - ${bgDate(v.date)}.pdf`, { title: 'Готово' }).catch(e => toast(e.message || String(e), true));
+      const full = `<!doctype html><html><head><meta charset="utf-8">${style}</head><body>${body}</body></html>`;
+      const r = await run('Правя PDF…', async () => ({ blob: buildPdf(await htmlToPages(full, false), false) }));
+      if (r) await deliver(r.blob, `${kind === 'invitation' ? 'Протокол поставяне покана' : 'Съобщение и протокол поставяне'} - ${fileSafe(b.name)} - ${bgDate(v.date)}.pdf`, { title: 'Готово', html: full }).catch(e => toast(e.message || String(e), true));
       render(true);
     };
   }

@@ -21,9 +21,10 @@
   const save = () => LS.set('print', cfg);
 
   const DOCS = [['protocol', 'Протокол', 'protocol-html'], ['invitation', 'Покана', 'invitation-html'], ['attendance', 'Присъствен списък', 'attendance-html']];
-  const PAPERS = [['80', '80 мм', 576], ['58', '58 мм', 384], ['80s', '80 мм (стар, 512 точки)', 512]];
+  const PAPERS = [['a4', 'A4 лист (ByteCintia C80)', 1728], ['80', 'Ролка 80 мм', 576], ['58', 'Ролка 58 мм', 384], ['80s', '80 мм (стар, 512 точки)', 512]];
+  const isA4 = () => cfg.paper === 'a4';
   const paperDots = () => (PAPERS.find(p => p[0] === cfg.paper) || PAPERS[0])[2];
-  const paperMm = () => (cfg.paper === '58' ? 58 : 80);
+  const paperMm = () => (isA4() ? 216 : cfg.paper === '58' ? 58 : 80);
   const D = mm => Math.round(mm * 8); // 203 dpi ≈ 8 точки на мм
 
   /* ---------- Стилове ---------- */
@@ -37,7 +38,7 @@
   #kip .kp-x { background:transparent !important; color:#fff !important; border:2px solid rgba(255,255,255,.5) !important; font-size:26px !important; min-height:56px !important; }
   #kip .kp-body { flex:1; display:flex; min-height:0; }
   #kip .kp-set { width:560px; max-width:100%; overflow:auto; padding:18px 22px 120px; }
-  #kip .kp-prev { flex:1; overflow:auto; background:#d9dfea; padding:26px; display:flex; flex-direction:column; align-items:center; gap:0; }
+  #kip .kp-prev { flex:1; overflow:auto; background:#d9dfea; padding:26px; display:flex; flex-direction:column; align-items:center; gap:0; min-width:0; }
   #kip .kp-card { background:#fff; border-radius:18px; padding:16px 18px; margin-bottom:14px; box-shadow:0 2px 8px rgba(11,42,91,.08); }
   #kip .kp-card h3 { margin:0 0 10px; font-size:24px !important; color:${NAVY}; }
   #kip .kp-seg { display:flex; flex-wrap:wrap; gap:8px; }
@@ -60,7 +61,7 @@
   #kip .kp-go:hover { background:${NAVY2} !important; }
   #kip .kp-test { flex:1; background:#fff3d6 !important; color:#7a5200 !important; border:2px solid ${GOLD} !important; font-size:22px !important; min-height:76px !important; border-radius:18px !important; margin:0 !important; }
   #kip .kp-status { font-size:22px !important; color:${NAVY}; font-weight:600; padding:0 22px 10px; min-height:30px; background:#fff; }
-  #kip .kp-sheet { background:#fff; box-shadow:0 6px 22px rgba(0,0,0,.18); position:relative; }
+  #kip .kp-sheet { background:#fff; box-shadow:0 6px 22px rgba(0,0,0,.18); position:relative; max-width:100%; flex:none; }
   #kip .kp-sheet canvas { display:block; width:100%; height:auto; }
   #kip .kp-cut { width:100%; max-width:var(--w); text-align:center; color:#6a7690; font-size:18px !important; padding:10px 0; border-top:2px dashed #8a96ad; margin-top:14px; margin-bottom:14px; }
   #kip .kp-info { color:#334; font-size:20px !important; margin-bottom:14px; font-weight:600; }
@@ -76,7 +77,7 @@
   @media (max-width:900px) {
     #kip .kp-body { flex-direction:column; overflow:auto; }
     #kip .kp-set { width:100%; padding-bottom:20px; overflow:visible; }
-    #kip .kp-prev { overflow:visible; min-height:400px; }
+    #kip .kp-prev { overflow:visible; min-height:400px; padding:12px; }
   }`;
   const st = document.createElement('style'); st.id = 'kip-style'; st.textContent = css; document.head.appendChild(st);
 
@@ -98,7 +99,9 @@
   }
 
   /* ---------- Подреждане на документа ---------- */
+  let custom = null; // документ, подаден отвън (напр. протокол с подписи от мобилния изглед)
   async function renderDoc() {
+    if (custom) return htmlToCanvas(custom.html);
     const id = (typeof state !== 'undefined' && state.meetingId) || null;
     if (!id) throw new Error('Отворете събрание, за да печатате негов документ.');
     const path = DOCS.find(d => d[0] === cfg.doc)[2];
@@ -109,6 +112,7 @@
 
   async function htmlToCanvas(html) {
     if (!window.html2canvas) throw new Error('Липсва модулът за печат. Рестартирайте приложението.');
+    if (isA4()) return htmlToCanvasA4(html);
     const W = paperDots(), inner = W - D(cfg.left) - D(cfg.right);
     const ifr = document.createElement('iframe');
     ifr.style.cssText = `position:fixed;left:-20000px;top:0;width:${W}px;height:200px;border:0;`;
@@ -136,10 +140,29 @@
     } finally { ifr.remove(); }
   }
 
+  async function htmlToCanvasA4(html) {
+    const CSSW = 794, SC = paperDots() / CSSW;
+    const ifr = document.createElement('iframe');
+    ifr.style.cssText = `position:fixed;left:-20000px;top:0;width:${CSSW}px;height:200px;border:0;`;
+    document.body.appendChild(ifr);
+    try {
+      const doc = ifr.contentDocument; doc.open(); doc.write(html); doc.close();
+      const s = doc.createElement('style');
+      s.textContent = `html,body{background:#fff!important;margin:0!important;max-width:none!important}body{width:${CSSW}px!important;box-sizing:border-box;padding:0 ${Math.round(Math.max(12, cfg.right) * 3.78)}px 0 ${Math.round(Math.max(15, cfg.left) * 3.78)}px!important;color:#000!important}*{color:#000!important}img{max-width:100%}`;
+      doc.head.appendChild(s);
+      await Promise.all([...doc.images].map(i => i.complete ? 0 : new Promise(r => { i.onload = i.onerror = r; })));
+      await new Promise(res => setTimeout(res, 200));
+      const H = Math.max(40, doc.documentElement.scrollHeight, doc.body.scrollHeight);
+      ifr.style.height = H + 'px';
+      await new Promise(res => setTimeout(res, 60));
+      return await window.html2canvas(doc.body, { backgroundColor: '#ffffff', scale: SC, width: CSSW, height: H, windowWidth: CSSW, windowHeight: H, logging: false });
+    } finally { ifr.remove(); }
+  }
+
   // Разделя на листове (по дължина), реже на празен ред, добавя празно отгоре/отдолу
   function toSheets(c) {
     const ctx = c.getContext('2d');
-    const max = cfg.sheet > 0 ? D(cfg.sheet * 10) : c.height;
+    const max = isA4() ? D(297) - D(cfg.top) - D(cfg.bottom) : cfg.sheet > 0 ? D(cfg.sheet * 10) : c.height;
     const sheets = [];
     let y = 0;
     while (y < c.height - 2) {
@@ -197,7 +220,7 @@
       }
     }
     out[p++] = 0x1B; out[p++] = 0x64; out[p++] = Math.max(0, Math.min(15, cfg.feed));
-    if (cfg.cut) { out[p++] = 0x1D; out[p++] = 0x56; out[p++] = 0x42; out[p++] = 0x00; }
+    if (cfg.cut && !isA4()) { out[p++] = 0x1D; out[p++] = 0x56; out[p++] = 0x42; out[p++] = 0x00; }
     return out.subarray(0, p);
   }
   function b64(u8) { let s = ''; for (let i = 0; i < u8.length; i += 0x8000) s += String.fromCharCode.apply(null, u8.subarray(i, i + 0x8000)); return btoa(s); }
@@ -264,18 +287,19 @@
     return `<div class="kp-row"><label>${label}</label><button class="kp-tog ${cfg[key] ? 'on' : ''}" data-k="${key}">${cfg[key] ? 'ДА' : 'НЕ'}</button></div>`;
   }
 
-  async function open() {
+  async function open(opts) {
     if (document.getElementById('kip')) return;
+    custom = opts && opts.html ? opts : null;
     const m = document.createElement('div'); m.id = 'kip';
     m.innerHTML = `<div class="kp-win">
       <div class="kp-head"><h2>🖨️ Печат <span>на термопринтер</span></h2><button class="kp-x">✕ Затвори</button></div>
       <div class="kp-body">
         <div class="kp-set">
-          <div class="kp-card"><h3>Какво да печатам</h3>${seg('doc', DOCS.map(d => [d[0], d[1]]))}</div>
+          <div class="kp-card"><h3>Какво да печатам</h3>${custom ? `<div class="kp-info" style="margin:0">${custom.title || 'Документ'}</div>` : seg('doc', DOCS.map(d => [d[0], d[1]]))}</div>
           <div class="kp-card"><h3>Принтер</h3>
             <div class="kp-pr"><select id="kp-printer"></select><button id="kp-refresh">↻ Обнови</button></div>
             <div class="kp-pr" style="margin-top:8px"><input type="text" id="kp-ip" placeholder="Мрежов принтер: IP, напр. 192.168.1.100"><button id="kp-addip">＋ Добави</button></div>
-            <div class="kp-hint">${ENV === 'android' ? 'Bluetooth принтерът (C80 и др.) трябва първо да е сдвоен в Настройки → Bluetooth на телефона (ПИН обикновено 0000 или 1234).' : ENV === 'desktop' ? 'Принтерите с драйвер в Windows (USB, Bluetooth, мрежа) излизат тук сами. Мрежов принтер без драйвер – въведете IP.' : 'В приложението „Протоколи КИ“ има повече възможности за печат.'}</div>
+            <div class="kp-hint">${ENV === 'android' ? 'Bluetooth принтерът трябва първо да е сдвоен в Настройки → Bluetooth на телефона (ПИН обикновено 0000 или 1234). За ByteCintia C80 изберете хартия „A4 лист“ и пуснете „Пробен лист“.' : ENV === 'desktop' ? 'Принтерите с драйвер в Windows (USB, Bluetooth, мрежа) излизат тук сами. Мрежов принтер без драйвер – въведете IP.' : 'В приложението „Протоколи КИ“ има повече възможности за печат.'}</div>
           </div>
           <div class="kp-card"><h3>Хартия и букви</h3>
             ${seg('paper', PAPERS.map(p => [p[0], p[1]]))}
@@ -326,7 +350,7 @@
       const tb = e.target.closest('.kp-tog');
       if (tb) { const k = tb.dataset.k; cfg[k] = !cfg[k]; tb.classList.toggle('on', cfg[k]); tb.textContent = cfg[k] ? 'ДА' : 'НЕ'; save(); }
     });
-    $('#kp-printer').onchange = e => { cfg.printer = e.target.value; save(); };
+    $('#kp-printer').onchange = e => { cfg.printer = e.target.value; autoA4(); save(); };
     $('#kp-refresh').onclick = fillPrinters;
     $('#kp-addip').onclick = () => {
       let ip = $('#kp-ip').value.trim().replace(/\s/g, '');
@@ -346,8 +370,19 @@
     if (!list.some(p => p.id === cfg.printer)) { const first = list.find(p => p.id && !p.dis); cfg.printer = first ? first.id : ''; save(); }
     sel.innerHTML = (list.length ? '' : '<option value="">Няма намерени принтери</option>') +
       list.map(p => `<option value="${p.id}" ${p.dis ? 'disabled' : ''} ${p.id === cfg.printer ? 'selected' : ''}>${p.name}</option>`).join('');
+    autoA4();
   }
 
+  // ByteCintia C80 се вижда като „C80_XXXX“ или „80CC_XXXX“ – той е за лист A4
+  function autoA4() {
+    const o = document.querySelector('#kp-printer option:checked');
+    if (o && /\b(C80|80CC)/i.test(o.textContent) && cfg.paper !== 'a4' && cfg.a4auto !== cfg.printer) {
+      cfg.paper = 'a4'; cfg.cut = false; cfg.a4auto = cfg.printer; save();
+      document.querySelectorAll('#kip .kp-seg[data-k=paper] button').forEach(b => b.classList.toggle('on', b.dataset.v === 'a4'));
+      const t = document.querySelector('#kip .kp-tog[data-k=cut]'); if (t) { t.classList.remove('on'); t.textContent = 'НЕ'; }
+      schedule();
+    }
+  }
   function schedule() { clearTimeout(timer); timer = setTimeout(preview, 250); }
 
   async function preview() {
@@ -357,7 +392,7 @@
       sheets = toSheets(await renderDoc());
       const w = Math.min(paperDots(), 520);
       const totalMm = Math.round(sheets.reduce((a, s) => a + s.height, 0) / 8);
-      box.innerHTML = `<div class="kp-info">${sheets.length} ${sheets.length === 1 ? 'лист' : 'листа'} · около ${(totalMm / 10).toFixed(1)} см хартия</div>`;
+      box.innerHTML = `<div class="kp-info">${sheets.length} ${sheets.length === 1 ? 'лист' : 'листа'}${isA4() ? ' A4' : ` · около ${(totalMm / 10).toFixed(1)} см хартия`}</div>`;
       sheets.forEach((s, i) => {
         const d = document.createElement('div'); d.className = 'kp-sheet'; d.style.width = w + 'px';
         d.appendChild(s); box.appendChild(d);

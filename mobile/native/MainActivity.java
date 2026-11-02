@@ -250,7 +250,10 @@ public class MainActivity extends BridgeActivity {
         if (!btAllowed()) throw new Exception("Разрешете Bluetooth за приложението");
         BluetoothAdapter a = BluetoothAdapter.getDefaultAdapter();
         if (a == null || !a.isEnabled()) throw new Exception("Включете Bluetooth на телефона");
-        a.cancelDiscovery();
+        // На Android 12+ cancelDiscovery иска BLUETOOTH_SCAN – не е нужно за сдвоен принтер
+        try {
+            if (Build.VERSION.SDK_INT < 31 || checkSelfPermission(Manifest.permission.BLUETOOTH_SCAN) == PackageManager.PERMISSION_GRANTED) a.cancelDiscovery();
+        } catch (SecurityException ignored) { }
         BluetoothDevice dev = a.getRemoteDevice(addr);
         BluetoothSocket s;
         try {
