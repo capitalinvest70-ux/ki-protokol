@@ -1,6 +1,7 @@
 (function () {
   'use strict';
   if (document.getElementById('ki-skin')) return; // вече е заредено
+  if (window.KIM && window.KIM.on) return; // мобилният изглед (mobile.js) е отворен – той си има свой вид
   const ANDROID = !!window.KIAndroid;
   if (!document.querySelector('meta[name=viewport]')) {
     const vm = document.createElement('meta'); vm.name = 'viewport'; vm.content = 'width=device-width, initial-scale=1';
@@ -227,12 +228,14 @@
         <button data-a="for">✅ Всички присъстващи ЗА</button>
         <button data-a="docs">📄 Всички документи</button>
         <button data-a="print">🖨️ Печат на термопринтер</button>
+        ${window.KIM ? '<button data-a="mob">📱 Мобилен изглед</button>' : ''}
         <div class="ki-fs"><button data-a="fsm">А−</button><button data-a="fsp">А+</button></div>
         <div id="ki-status"></div>`;
       p.querySelector('.ki-t').onclick = () => { p.classList.toggle('ki-min'); LS.set('min', p.classList.contains('ki-min')); };
       p.addEventListener('click', async (e) => {
         const a = e.target.closest('button')?.dataset.a; if (!a) return;
         if (a === 'fsm' || a === 'fsp') { changeFs(a === 'fsp' ? 2 : -2); return; }
+        if (a === 'mob') { window.KIM.toMobile(); return; }
         if (PHONE()) { p.classList.add('ki-min'); }
         try {
           if (a === 'new') quickMeeting();
