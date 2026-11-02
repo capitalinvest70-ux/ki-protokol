@@ -1432,9 +1432,35 @@
       const res = await fetch(`/api/meetings/${mid}/${K[0]}`, { credentials: 'same-origin' });
       if (!res.ok) throw new Error((await res.text()).replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 200) || 'Документът още не е готов');
       if (K[2] === 'pdf') { const h = await res.text(); return { html: h, blob: buildPdf(await htmlToPages(h, false), false) }; }
-      return { blob: new Blob([await res.blob()], { type: K[2] }) };
+      if (kind === 'word') { const h = await res.text(); return { html: h, blob: new Blob([h], { type: K[2] }) }; }
+      const blob = new Blob([await res.blob()], { type: K[2] });
+      // Word (.docx) → HTML, за да може да се печата на C80
+      let html = null;
+      try { busyText('Подготвям за печат…'); html = await docxToHtml(blob); } catch (e) { console.warn('docx', e); }
+      return { blob, html };
     });
     if (r) await deliver(r.blob, K[1], { title: 'Документът е готов', html: r.html }).catch(e => toast(e.message || String(e), true));
+  }
+
+  // Модулът за Word се зарежда чак когато трябва (вграден е в приложението)
+  async function loadMammoth() {
+    if (window.mammoth) return window.mammoth;
+    let code = '';
+    if (ANDROID && window.KIAndroid.asset) code = window.KIAndroid.asset('mammoth.js');
+    if (!code) { const r = await fetch('/mammoth.js').catch(() => null); if (r && r.ok) code = await r.text(); }
+    if (!code) throw new Error('Липсва модулът за Word');
+    const sc = document.createElement('script'); sc.textContent = code; document.head.appendChild(sc); sc.remove();
+    if (!window.mammoth) throw new Error('Модулът за Word не се зареди');
+    return window.mammoth;
+  }
+  async function docxToHtml(blob) {
+    const mm = await loadMammoth();
+    const r = await mm.convertToHtml({ arrayBuffer: await blob.arrayBuffer() });
+    return `<!doctype html><html><head><meta charset="utf-8"><style>
+      body{font-family:"Times New Roman",serif;font-size:15px;line-height:1.45;color:#000}
+      p{margin:0 0 7px;text-align:justify} h1,h2,h3{text-align:center;margin:10px 0}
+      table{border-collapse:collapse;width:100%;margin:6px 0} td,th{border:1px solid #000;padding:3px 5px;vertical-align:top}
+      img{max-width:100%}</style></head><body>${r.value}</body></html>`;
   }
 
   /* ---------- Съобщение за протокола / протоколи за поставяне (чл. 13 и чл. 16 ЗУЕС) ---------- */

@@ -35,7 +35,7 @@ jobs:
           fi
           cp keystore/app.keystore ~/.android/debug.keystore
       - name: Bundle print + screens
-        run: cat ../vendor/html2canvas.min.js > www/skin.js && printf '\n;\n' >> www/skin.js && cat ../print.js >> www/skin.js && printf '\n;\n' >> www/skin.js && cat ../mobile.js >> www/skin.js && printf '\n;\n' >> www/skin.js && cat ../skin.js >> www/skin.js
+        run: cp ../vendor/mammoth.browser.min.js www/mammoth.js && cat ../vendor/html2canvas.min.js > www/skin.js && printf '\n;\n' >> www/skin.js && cat ../print.js >> www/skin.js && printf '\n;\n' >> www/skin.js && cat ../mobile.js >> www/skin.js && printf '\n;\n' >> www/skin.js && cat ../skin.js >> www/skin.js
       - run: npm install
       - run: npx cap add android
       - name: Skin activity, icon, version

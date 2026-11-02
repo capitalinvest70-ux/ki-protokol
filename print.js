@@ -18,6 +18,8 @@
     cut: true, pause: true, copies: 1, dark: 150, net: [],
   };
   let cfg = Object.assign({}, DEF, LS.get('print', {}));
+  // A4 (ByteCintia C80): повече празно в края, за да не се късат долните редове
+  if (cfg.paper === 'a4' && !cfg.a4bottom) { cfg.bottom = Math.max(cfg.bottom, 30); cfg.a4bottom = 1; LS.set('print', cfg); }
   const save = () => LS.set('print', cfg);
 
   const DOCS = [['protocol', 'Протокол', 'protocol-html'], ['invitation', 'Покана', 'invitation-html'], ['attendance', 'Присъствен списък', 'attendance-html']];
@@ -312,6 +314,7 @@
           <div class="kp-card"><h3>Разстояния на листа</h3>
             ${step('top', 'Празно отгоре', 0, 60, 1, ' мм')}
             ${step('bottom', 'Празно отдолу', 0, 80, 1, ' мм')}
+            <div class="kp-hint">Ако при късане се отрязват долните редове – увеличете „Празно отдолу“.</div>
             ${step('left', 'Поле отляво', 0, 15, 1, ' мм')}
             ${step('right', 'Поле отдясно', 0, 15, 1, ' мм')}
             ${step('feed', 'Подаване преди рязане', 0, 15, 1, ' реда')}
@@ -337,6 +340,7 @@
       if (sb) {
         const k = sb.parentElement.dataset.k, v = sb.dataset.v;
         cfg[k] = (k === 'paper' || k === 'doc') ? v : Number(v);
+        if (k === 'paper' && v === 'a4' && cfg.bottom < 30) { cfg.bottom = 30; cfg.cut = false; const ob = document.querySelector('#kip .kp-step[data-k=bottom] output'); if (ob) ob.textContent = '30 мм'; }
         sb.parentElement.querySelectorAll('button').forEach(b => b.classList.toggle('on', b === sb));
         save(); schedule(); return;
       }
@@ -377,7 +381,8 @@
   function autoA4() {
     const o = document.querySelector('#kp-printer option:checked');
     if (o && /\b(C80|80CC)/i.test(o.textContent) && cfg.paper !== 'a4' && cfg.a4auto !== cfg.printer) {
-      cfg.paper = 'a4'; cfg.cut = false; cfg.a4auto = cfg.printer; save();
+      cfg.paper = 'a4'; cfg.cut = false; cfg.a4auto = cfg.printer; cfg.bottom = Math.max(cfg.bottom, 30); cfg.a4bottom = 1; save();
+      const ob = document.querySelector('#kip .kp-step[data-k=bottom] output'); if (ob) ob.textContent = cfg.bottom + ' мм';
       document.querySelectorAll('#kip .kp-seg[data-k=paper] button').forEach(b => b.classList.toggle('on', b.dataset.v === 'a4'));
       const t = document.querySelector('#kip .kp-tog[data-k=cut]'); if (t) { t.classList.remove('on'); t.textContent = 'НЕ'; }
       schedule();

@@ -372,6 +372,12 @@ public class MainActivity extends BridgeActivity {
         }
 
         @JavascriptInterface
+        public String asset(String name) {
+            if (name == null || !name.matches("[a-z0-9.-]+\\.js")) return "";
+            return MainActivity.this.readAsset("public/" + name);
+        }
+
+        @JavascriptInterface
         public String btList() {
             return MainActivity.this.btList();
         }
