@@ -1,14 +1,14 @@
 // Протоколи КИ – версия за компютър.
 // Отваря Програма за протокол в собствен прозорец и слага скина на Капитал Инвест.
-const { app, BrowserWindow, shell, Menu, session, ipcMain } = require('electron');
+const { app, BrowserWindow, shell, Menu, session, ipcMain, clipboard } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const os = require('os');
 const net = require('net');
 
 const SITE = 'https://protocol-app-production-cc1d.up.railway.app/';
-// html2canvas (за печат) + модул за печат + скин
-const SKIN = ['html2canvas.min.js', 'print.js', 'skin.js']
+// html2canvas (за печат) + модул за печат + мобилният изглед (същият като на телефона) + скин за пълната версия
+const SKIN = ['html2canvas.min.js', 'print.js', 'mobile.js', 'skin.js']
   .map(f => fs.readFileSync(path.join(__dirname, f), 'utf8')).join('\n;\n');
 const DOWNLOAD_RE = /(-docx|download=word)/;
 
@@ -83,7 +83,7 @@ ipcMain.handle('ki-printers', async () => {
 ipcMain.handle('ki-print-image', async (e, dataUrl, o) => {
   const file = path.join(os.tmpdir(), `ki-print-${Date.now()}.html`);
   fs.writeFileSync(file, `<!doctype html><html><head><meta charset="utf-8"><style>
-    @page{size:${o.paperMm}mm ${Math.ceil(o.heightMm) + 1}mm;margin:0}
+    @page{size:${o.a4 ? 'A4' : `${o.paperMm}mm ${Math.ceil(o.heightMm) + 1}mm`};margin:0}
     html,body{margin:0;padding:0;background:#fff}
     img{display:block;width:${o.widthMm}mm;margin:0 auto}
   </style></head><body><img src="${dataUrl}"></body></html>`);
@@ -93,7 +93,7 @@ ipcMain.handle('ki-print-image', async (e, dataUrl, o) => {
     await new Promise((res, rej) => pw.webContents.print({
       silent: true, deviceName: o.deviceName, printBackground: true, color: false,
       margins: { marginType: 'none' },
-      pageSize: { width: Math.round(o.paperMm * 1000), height: Math.round((Math.ceil(o.heightMm) + 1) * 1000) },
+      pageSize: o.a4 ? 'A4' : { width: Math.round(o.paperMm * 1000), height: Math.round((Math.ceil(o.heightMm) + 1) * 1000) },
     }, (ok, why) => ok ? res() : rej(new Error(why || 'Принтерът отказа'))));
   } finally {
     pw.destroy();
@@ -111,6 +111,42 @@ ipcMain.handle('ki-raw', (e, target, base64) => new Promise((res, rej) => {
   sock.on('timeout', () => { sock.destroy(); rej(new Error('Принтерът ' + host + ' не отговаря')); });
   sock.on('error', err => rej(new Error('Няма връзка с ' + host + ': ' + err.message)));
 }));
+
+/* ---------- Файлове: PDF с подписи, договори – в Документи\Протоколи ---------- */
+function docsDir() { const d = path.join(app.getPath('documents'), 'Протоколи'); fs.mkdirSync(d, { recursive: true }); return d; }
+function uniqueFile(dir, name) {
+  name = String(name || 'документ').replace(/[\\/:*?"<>|]+/g, ' ').trim();
+  let file = path.join(dir, name);
+  const ext = path.extname(file), base = file.slice(0, -ext.length || undefined);
+  for (let i = 2; fs.existsSync(file); i++) file = `${base} (${i})${ext}`;
+  return file;
+}
+const isOurFile = f => typeof f === 'string' && path.resolve(f).startsWith(docsDir());
+ipcMain.handle('ki-save', (e, name, b64) => {
+  try { const file = uniqueFile(docsDir(), name); fs.writeFileSync(file, Buffer.from(b64, 'base64')); return file; }
+  catch (err) { return 'ERR ' + err.message; }
+});
+ipcMain.handle('ki-open', (e, file) => isOurFile(file) ? shell.openPath(file) : '');
+ipcMain.handle('ki-show', (e, file) => { if (isOurFile(file)) shell.showItemInFolder(file); });
+// Имейл / Viber: копира файла (за Ctrl+V), маркира го в папката и отваря пощата или Viber
+function copyFileToClipboard(file) {
+  try { if (process.platform === 'win32') clipboard.writeBuffer('FileNameW', Buffer.from(file + '\0', 'ucs2')); } catch (e) {}
+}
+ipcMain.handle('ki-share', async (e, file, mime, target, bcc, subject, text) => {
+  if (!isOurFile(file)) return false;
+  copyFileToClipboard(file);
+  shell.showItemInFolder(file);
+  const enc = encodeURIComponent;
+  if (target === 'email') {
+    const q = [bcc ? 'bcc=' + enc(bcc) : '', 'subject=' + enc(subject || ''), 'body=' + enc((text || '') + '\n\n')].filter(Boolean).join('&');
+    await shell.openExternal('mailto:?' + q).catch(() => {});
+  } else if (target === 'viber') {
+    await shell.openExternal('viber://chats').catch(() => shell.openExternal('viber://').catch(() => {}));
+  }
+  return true;
+});
+// Вграден модул (Word → печат)
+ipcMain.handle('ki-asset', (e, name) => /^[a-z0-9.-]+\.js$/.test(name) && fs.existsSync(path.join(__dirname, name)) ? fs.readFileSync(path.join(__dirname, name), 'utf8') : '');
 
 app.on('second-instance', () => { if (win) { if (win.isMinimized()) win.restore(); win.focus(); } });
 app.whenReady().then(() => { Menu.setApplicationMenu(null); setupDownloads(); createWindow(); });

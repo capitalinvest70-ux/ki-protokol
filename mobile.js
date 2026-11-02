@@ -6,6 +6,8 @@
   if (window.KIM) return;
 
   const ANDROID = !!window.KIAndroid;
+  const DESK = !!window.KIDesktop;                 // приложението за Windows
+  const N = window.KIAndroid || window.KIDesktop || null; // запис, отваряне, изпращане на файлове
   const store = (s, p) => ({
     get(k, d) { try { const v = s.getItem(p + k); return v == null ? d : JSON.parse(v); } catch (e) { return d; } },
     set(k, v) { try { s.setItem(p + k, JSON.stringify(v)); } catch (e) {} },
@@ -16,7 +18,7 @@
 
   const isRoot = location.pathname === '/' || location.pathname === '';
   const phone = ANDROID || Math.min(window.innerWidth, (window.screen && window.screen.width) || 9999) < 760;
-  const on = isRoot && !SS.get('full', false) && (phone || LS.get('force', false));
+  const on = isRoot && !SS.get('full', false) && (phone || DESK || LS.get('force', false));
 
   const KIM = window.KIM = {
     on,
@@ -250,15 +252,26 @@
   #kim .steps span { flex:1; height:6px; border-radius:4px; background:#d6dfee; }
   #kim .steps span.on { background:var(--ok); }
   `;
-  const st = document.createElement('style'); st.id = 'kim-css'; st.textContent = css; document.head.appendChild(st);
+  const deskCss = `
+  #kim.desk .top { padding-left:max(8px, calc(50% - 500px)); padding-right:max(8px, calc(50% - 500px)); }
+  #kim.desk .main { padding-left:max(12px, calc(50% - 490px)); padding-right:max(12px, calc(50% - 490px)); }
+  #kim.desk .tabs { padding-left:max(0px, calc(50% - 500px)); padding-right:max(0px, calc(50% - 500px)); }
+  #kim.desk .menu { align-items:center; justify-content:center; }
+  #kim.desk .menu .sheet { width:min(680px, 96vw); border-radius:20px; max-height:92vh; }
+  #kim.desk .toast { left:50%; right:auto; width:min(640px, 92vw); transform:translateX(-50%); }
+  #kim.desk .toast.hide { transform:translate(-50%, -20px); }
+  #kim.desk .padw canvas { height:240px; }
+  #kim.desk .item:hover, #kim.desk .unit:hover { box-shadow:0 2px 10px rgba(11,42,91,.22); }`;
+  const st = document.createElement('style'); st.id = 'kim-css'; st.textContent = css + deskCss; document.head.appendChild(st);
   document.documentElement.classList.add('kim-on');
 
   const root = document.createElement('div'); root.id = 'kim';
+  if (DESK) root.classList.add('desk');
   root.innerHTML = `<div class="top"></div><div class="main"></div><div class="tabs" hidden></div><div class="toast hide"></div>`;
   document.body.appendChild(root);
   const $top = root.querySelector('.top'), $main = root.querySelector('.main'), $tabs = root.querySelector('.tabs'), $toast = root.querySelector('.toast');
   const setFs = v => { v = Math.max(15, Math.min(26, v)); LS.set('fs', v); root.style.setProperty('--fs', v + 'px'); return v; };
-  setFs(LS.get('fs', 18));
+  setFs(LS.get('fs', DESK ? 21 : 18));
 
   let toastT;
   function toast(msg, err) {
@@ -778,7 +791,7 @@
   }
   const padHtml = (label, existing) => `<label class="l">${esc(label)}</label>
     ${existing ? `<div class="sigok"><img src="${existing.img}" alt=""><div class="grow mut">Има подпис${existing.at ? ' · ' + esc(existing.at) : ''}.<br>Подпиши долу само ако трябва нов.</div></div>` : ''}
-    <div class="padw"><canvas></canvas><div class="ln"></div><div class="ph">✍️ Подпиши се тук с пръст</div></div>
+    <div class="padw"><canvas></canvas><div class="ln"></div><div class="ph">✍️ Подпиши се тук ${DESK ? 'с мишката или писалката' : 'с пръст'}</div></div>
     <div class="row" style="justify-content:flex-end;margin-top:6px"><button class="btn lite sm" data-pad="clear">Изчисти</button></div>`;
   function sheet(inner) {
     const m = document.createElement('div'); m.className = 'menu';
@@ -1314,36 +1327,39 @@
     const text = opt.text || `Здравейте,\n\nИзпращаме Ви „${subject}“.\n\nПоздрави,\n${COMPANY}`;
     const emails = opt.emails || [];
     let uri = null;
-    if (ANDROID && window.KIAndroid.saveFile) {
-      uri = window.KIAndroid.saveFile(name, await b64(blob), mime);
+    if (N && N.saveFile) {
+      uri = await N.saveFile(name, await b64(blob), mime);
       if (!uri || /^ERR/.test(uri)) throw new Error('Не можах да запиша файла: ' + (uri || ''));
     }
-    const m = sheet(`<h2>✅ ${esc(opt.title || 'Готово')}</h2><div class="mut">${uri ? 'Записано в Изтегляния / Протоколи / ' : ''}${esc(name)}</div>
+    const where = DESK ? 'Документи \\ Протоколи' : 'Изтегляния / Протоколи';
+    const m = sheet(`<h2>✅ ${esc(opt.title || 'Готово')}</h2><div class="mut">${uri ? `Записано в ${where} / ` : ''}${esc(name)}</div>
       ${emails.length ? `<button class="btn big gold col" data-x="all"><span>📨 Изпрати на всички с имейл (${emails.length})</span><span style="font-weight:400;font-size:.8em">отваря пощата с всички адреси като скрито копие</span></button>` : ''}
       <div class="grid2" style="margin-top:10px">
-        ${opt.html && window.KIPrint ? '<button class="btn" data-x="bt">🖨️ Печат C80</button>' : isPdf ? '<button class="btn" data-x="c80">🖨️ Печат C80</button>' : '<button class="btn" data-x="open">📖 Отвори</button>'}
+        ${opt.html && window.KIPrint ? '<button class="btn" data-x="bt">🖨️ Печат C80</button>' : isPdf && !DESK ? '<button class="btn" data-x="c80">🖨️ Печат C80</button>' : '<button class="btn" data-x="open">📖 Отвори</button>'}
         <button class="btn lite" data-x="email">📧 Имейл</button>
         <button class="btn lite" data-x="viber" style="color:#7360f2">💬 Viber</button>
-        <button class="btn lite" data-x="share">📤 Друго…</button></div>
-      ${isPdf ? '<button class="btn out" data-x="open">📖 Отвори</button>' : ''}
-      ${isPdf && opt.html && window.KIPrint ? '<button class="btn out" data-x="c80">🖨️ Печат чрез SharpFox</button>' : ''}
-      ${isPdf ? '<div class="mut" style="margin-top:6px">„Печат C80“ праща по Bluetooth направо към принтера. Ако не тръгне – „чрез SharpFox“ (приложението на ByteCintia).</div>' : ''}
+        <button class="btn lite" data-x="share">${DESK ? '📂 Покажи в папката' : '📤 Друго…'}</button></div>
+      ${isPdf || (opt.html && window.KIPrint) ? '<button class="btn out" data-x="open">📖 Отвори</button>' : ''}
+      ${isPdf && opt.html && window.KIPrint && !DESK ? '<button class="btn out" data-x="c80">🖨️ Печат чрез SharpFox</button>' : ''}
+      ${DESK ? '<div class="mut" style="margin-top:6px">Имейл и Viber: файлът се маркира в папката и се копира – постави го с Ctrl+V или го завлачи в писмото/чата.</div>'
+        : isPdf ? '<div class="mut" style="margin-top:6px">„Печат C80“ праща по Bluetooth направо към принтера. Ако не тръгне – „чрез SharpFox“ (приложението на ByteCintia).</div>' : ''}
       <button class="btn out" data-x="close">Готово</button>`);
     const on = (k, f) => { const el = m.querySelector(`[data-x=${k}]`); if (el) el.onclick = f; };
     const dl = () => saveBlob(blob, name);
-    const nat = !!(uri && window.KIAndroid.shareTo);
+    const nat = !!(uri && N && N.shareTo);
+    const deskNote = () => { if (DESK) toast('Файлът е копиран и маркиран в папката – постави го с Ctrl+V'); };
     on('close', () => m.remove());
-    on('bt', () => { m.remove(); window.KIPrint.open({ title: name.replace(/\.pdf$/i, ''), html: opt.html }); });
-    on('open', () => { if (uri) window.KIAndroid.openFile(uri, mime); else window.open(URL.createObjectURL(blob), '_blank'); });
-    on('c80', () => { if (nat) window.KIAndroid.shareTo(uri, mime, 'c80', '', subject, ''); else { dl(); toast('PDF-ът е свален – отпечатай го през SharpFox или драйвера на C80'); } });
-    on('email', () => { if (nat) window.KIAndroid.shareTo(uri, mime, 'email', '', subject, text); else { dl(); location.href = `mailto:?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(text + '\n\n(файлът е свален – прикачете го)')}`; } });
+    on('bt', () => { m.remove(); window.KIPrint.open({ title: name.replace(/\.[a-z]+$/i, ''), html: opt.html }); });
+    on('open', () => { if (uri) N.openFile(uri, mime); else window.open(URL.createObjectURL(blob), '_blank'); });
+    on('c80', () => { if (nat) N.shareTo(uri, mime, 'c80', '', subject, ''); else { dl(); toast('PDF-ът е свален – отпечатай го през SharpFox или драйвера на C80'); } });
+    on('email', () => { if (nat) { N.shareTo(uri, mime, 'email', '', subject, text); deskNote(); } else { dl(); location.href = `mailto:?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(text + '\n\n(файлът е свален – прикачете го)')}`; } });
     on('all', () => {
       const list = emails.join(',');
-      if (nat) window.KIAndroid.shareTo(uri, mime, 'email', list, subject, text);
+      if (nat) { N.shareTo(uri, mime, 'email', list, subject, text); deskNote(); }
       else { dl(); location.href = `mailto:?bcc=${encodeURIComponent(list)}&subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(text + '\n\n(файлът е свален – прикачете го)')}`; }
     });
-    on('viber', () => { if (nat) window.KIAndroid.shareTo(uri, mime, 'viber', '', subject, subject); else if (!webShare(blob, name)) dl(); });
-    on('share', () => { if (uri) window.KIAndroid.shareFile(uri, mime); else if (!webShare(blob, name)) dl(); });
+    on('viber', () => { if (nat) { N.shareTo(uri, mime, 'viber', '', subject, subject); deskNote(); } else if (!webShare(blob, name)) dl(); });
+    on('share', () => { if (uri) N.shareFile(uri, mime); else if (!webShare(blob, name)) dl(); });
   }
   function webShare(blob, name) {
     try {
@@ -1446,7 +1462,7 @@
   async function loadMammoth() {
     if (window.mammoth) return window.mammoth;
     let code = '';
-    if (ANDROID && window.KIAndroid.asset) code = window.KIAndroid.asset('mammoth.js');
+    if (N && N.asset) code = await N.asset('mammoth.js');
     if (!code) { const r = await fetch('/mammoth.js').catch(() => null); if (r && r.ok) code = await r.text(); }
     if (!code) throw new Error('Липсва модулът за Word');
     const sc = document.createElement('script'); sc.textContent = code; document.head.appendChild(sc); sc.remove();
@@ -1552,7 +1568,7 @@
     closeMenu: el => el.closest('.menu').remove(),
     reload: () => render(),
     refresh: async el => { el.closest('.menu') && el.closest('.menu').remove(); D.buildings = null; D.all = null; D.b = {}; D.m = {}; D.chair = {}; D.sec = {}; D.det = {}; D.fees = {}; await render(); toast('Обновено'); },
-    fs: el => { setFs(LS.get('fs', 18) + num(el.dataset.v)); },
+    fs: el => { setFs(LS.get('fs', DESK ? 21 : 18) + num(el.dataset.v)); },
     logout: async () => { await post('/api/auth/logout').catch(() => {}); D.user = null; location.hash = '#/'; location.reload(); },
     full: el => {
       const mid = el.dataset.m ? +el.dataset.m : null, d = mid && D.m[mid];

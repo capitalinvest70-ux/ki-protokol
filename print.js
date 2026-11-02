@@ -246,6 +246,7 @@
       throw new Error('Този принтер не се поддържа тук.');
     }
     if (p.startsWith('win:')) {
+      if (isA4()) return window.KIDesktop.printImage(s.toDataURL('image/png'), { deviceName: p.slice(4), paperMm: 210, widthMm: 210, heightMm: Math.min(296, s.height / s.width * 210), cut: false, a4: true });
       return window.KIDesktop.printImage(s.toDataURL('image/png'), { deviceName: p.slice(4), paperMm: paperMm(), widthMm: s.width / 8, heightMm: s.height / 8, cut: cfg.cut });
     }
     return systemPrint([s]);
