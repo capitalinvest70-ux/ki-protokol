@@ -281,7 +281,7 @@
   }
 
   /* ---------- Данни ---------- */
-  const D = { user: null, buildings: null, b: {}, m: {}, chair: {}, sec: {}, det: {} };
+  const D = { user: null, buildings: null, b: {}, m: {}, chair: {}, sec: {}, det: {}, fees: {} };
   async function loadBuildings(force) { if (!D.buildings || force) { const r = await api('/api/buildings'); D.buildings = r.buildings || r; } return D.buildings; }
   async function loadBuilding(id, force) { if (!D.b[id] || force) D.b[id] = await api('/api/buildings/' + id); return D.b[id]; }
   async function loadMeeting(id, force) {
@@ -293,6 +293,40 @@
   async function loadSec(id, force) { if (!D.sec[id] || force) D.sec[id] = await api(`/api/meetings/${id}/secretary-candidates`).catch(() => ({ candidates: [], votes: [] })); return D.sec[id]; }
   const itemFor = (d, kind) => { const no = (KIND_NO[d.meeting.meeting_type] || {})[kind]; return no ? (d.agenda || []).find(a => num(a.item_no) === no) : null; };
   const getDet = async (itemId, kind) => { const r = await api(`/api/agenda/${itemId}/${EP[kind]}`).catch(() => null); return r && (r.details || (r.people && r.people.length)) ? { details: r.details || {}, people: r.people || [] } : null; };
+  /* ---------- Такси: общи или разделени режийни (както в Програма за протокол) ---------- */
+  const DEF_FEES = [['elevator_maintenance', 'Поддръжка асансьор', 'object'], ['elevator_electricity', 'Ток асансьор', 'person'], ['staircase_electricity', 'Ток стълбище', 'person'],
+    ['water', 'Вода', 'person'], ['cleaning', 'Хигиена', 'object'], ['common_room', 'Общо помещение', 'common_room']];
+  const BASIS = [['object', 'на обект'], ['person', 'на човек'], ['floor', 'на човек / по етажи'], ['common_room', 'на ползвано общо помещение']];
+  async function loadFees(itemId) {
+    const det = await api(`/api/agenda/${itemId}/fee-decision-details`).catch(() => null);
+    const of = await api(`/api/agenda/${itemId}/operating-fees`).catch(() => null);
+    const items = (of && of.items) || [], rules = {};
+    for (const i of items) if (i.basis === 'floor') {
+      const r = await api(`/api/agenda/${itemId}/fee-rules/${encodeURIComponent(i.fee_key)}`).catch(() => null);
+      if (r) rules[i.fee_key] = { default_percent: r.setting && r.setting.default_percent != null ? num(r.setting.default_percent) : 100, items: (r.items || []).map(x => ({ rule_type: 'floor', floor_no: num(x.floor_no), percent: num(x.percent) })) };
+    }
+    const cr = await api(`/api/agenda/${itemId}/fee-rules/operating_common`).catch(() => null);
+    const common = cr && cr.setting ? { rule_mode: cr.setting.rule_mode || 'all', default_percent: cr.setting.default_percent != null ? num(cr.setting.default_percent) : 100,
+      items: (cr.items || []).map(x => x.rule_type === 'object' ? { rule_type: 'object', unit_id: num(x.unit_id), percent: num(x.percent) } : { rule_type: 'floor', floor_no: num(x.floor_no), percent: num(x.percent) }) } : null;
+    return { details: (det && det.details) || null, items, rules, common };
+  }
+  // Стандартните такси + каквото има записано
+  function mergeFees(items) {
+    const out = DEF_FEES.map(([k, n, b], i) => { const f = (items || []).find(x => x.fee_key === k); return f ? { ...f } : { fee_key: k, fee_name: n, is_standard: 1, amount: 0, basis: b, is_active: k === 'common_room' ? 0 : 1, sort_order: i + 1 }; });
+    (items || []).forEach(x => { if (!out.some(o => o.fee_key === x.fee_key)) out.push({ ...x }); });
+    return out;
+  }
+  async function saveFees(itemId, f) {
+    await post(`/api/agenda/${itemId}/fee-decision-details`, f.details);
+    if (f.details.operating_mode === 'separate' && f.items && f.items.length) {
+      await post(`/api/agenda/${itemId}/operating-fees`, { items: f.items.map(i => ({ fee_key: i.fee_key, fee_name: i.fee_name, is_standard: num(i.is_standard) ? 1 : 0, amount: num(i.amount), basis: i.basis || 'object', is_active: num(i.is_active == null ? 1 : i.is_active) ? 1 : 0 })) });
+      for (const i of f.items) if (i.basis === 'floor' && f.rules && f.rules[i.fee_key])
+        await post(`/api/agenda/${itemId}/fee-rules/${encodeURIComponent(i.fee_key)}`, { rule_mode: 'floor', default_percent: f.rules[i.fee_key].default_percent, items: f.rules[i.fee_key].items });
+    }
+    if (f.details.operating_mode === 'common' && f.common && f.common.rule_mode !== 'all') await post(`/api/agenda/${itemId}/fee-rules/operating_common`, f.common);
+  }
+  const floorsOf = d => { const fl = (d.units || []).map(u => num(u.floor)); return Math.max(1, num((d.building || {}).floors), ...fl); };
+
   async function loadDet(mid, force) {
     if (D.det[mid] && !force) return D.det[mid];
     const d = await loadMeeting(mid), out = {};
@@ -587,16 +621,17 @@
     if (K.revision) need.push('Ревизия');
     if (K.fee) {
       say('Такси…');
-      const s = (await fromMeeting(same, 'fee')) || (await fromMeeting(tpl, 'fee'));
-      if (s && s.details) {
-        const x = s.details;
-        await post(`/api/agenda/${target('fee').id}/fee-decision-details`, {
-          manager_fee_amount: num(x.manager_fee_amount), cashier_fee_amount: num(x.cashier_fee_amount), repair_fund_amount: num(x.repair_fund_amount),
-          repair_fund_mode: x.repair_fund_mode || 'fixed_object', operating_mode: x.operating_mode === 'separate' ? 'separate' : 'common',
-          operating_common_amount: x.operating_mode === 'separate' ? 0 : num(x.operating_common_amount), operating_common_basis: x.operating_common_basis || 'object', extra_text: x.extra_text || '' });
-        done.push(`Такси: управление ${num(x.manager_fee_amount)} €, ремонт ${num(x.repair_fund_amount)} €${same ? ' (като последния път)' : ''}`);
-        if (x.operating_mode === 'separate') need.push('Режийни по видове – провери');
-        else if (!same) need.push('Такси – провери за този вход');
+      let srcM = null, f = null;
+      for (const sm of [same, tpl]) { const it = sm && itemFor(sm, 'fee'); if (!it) continue; const ff = await loadFees(it.id); if (ff.details) { srcM = sm; f = ff; break; } }
+      if (f) {
+        const x = f.details, sep = x.operating_mode === 'separate';
+        f.details = { manager_fee_amount: num(x.manager_fee_amount), cashier_fee_amount: num(x.cashier_fee_amount), repair_fund_amount: num(x.repair_fund_amount),
+          repair_fund_mode: x.repair_fund_mode || 'fixed_object', operating_mode: sep ? 'separate' : 'common', operating_common_amount: sep ? 0 : num(x.operating_common_amount),
+          operating_common_basis: x.operating_common_basis || 'object', extra_text: x.extra_text || '' };
+        if (srcM !== same) f.common = null; // изключенията по обекти важат само за същия вход
+        await saveFees(target('fee').id, f);
+        done.push(`Такси: управление ${num(x.manager_fee_amount)} €, ремонт ${num(x.repair_fund_amount)} €, ${sep ? 'разделени режийни (' + f.items.filter(i => num(i.is_active)).length + ' вида)' : 'общи режийни ' + num(x.operating_common_amount) + ' €'}${srcM === same ? ' – като последния път' : ''}`);
+        if (srcM !== same) need.push('Такси – провери за този вход');
       } else need.push('Такси');
     }
 
@@ -908,13 +943,41 @@
         <button class="btn" data-act="saveRev" ${dis}>💾 Запиши</button></div>`);
     }
     if (K.fee) {
-      const x = det.fee && det.fee.details;
-      parts.push(`<div class="card"><h2>💶 Месечни такси ${stChip(x)}</h2>
-        <div class="grid2"><div><label class="l">Управление, € на обект</label><input id="k-f1" inputmode="decimal" value="${esc(x ? x.manager_fee_amount : '')}" ${dis}></div>
-        <div><label class="l">Фонд ремонт, €</label><input id="k-f2" inputmode="decimal" value="${esc(x ? x.repair_fund_amount : '')}" ${dis}></div>
-        <div><label class="l">Касиер, €</label><input id="k-f3" inputmode="decimal" value="${esc(x ? x.cashier_fee_amount : 0)}" ${dis}></div>
-        <div><label class="l">Общи режийни, €</label><input id="k-f4" inputmode="decimal" value="${esc(x ? x.operating_common_amount : 0)}" ${x && x.operating_mode === 'separate' ? 'disabled' : dis}></div></div>
-        ${x && x.operating_mode === 'separate' ? `<div class="note">Режийните са по видове (асансьор, ток…). Тях ги провери в пълната версия.</div><button class="btn out" data-act="full" data-m="${mid}" data-p="${itemFor(d, 'fee').id}">⚙️ Режийни по видове ›</button>` : ''}
+      const F = (keep && D.fees[mid]) || (D.fees[mid] = await loadFees(itemFor(d, 'fee').id));
+      const x = F.details || {}, sep = x.operating_mode === 'separate', rf = x.repair_fund_mode || 'fixed_object', cb = x.operating_common_basis || 'object';
+      const items = mergeFees(F.items), floors = floorsOf(d);
+      const feeRow = i => {
+        const rule = F.rules[i.fee_key] || { default_percent: 100, items: [] };
+        const pctFor = fl => { const r = rule.items.find(y => num(y.floor_no) === fl); return r ? r.percent : rule.default_percent; };
+        return `<div class="vrow k-fee" data-key="${esc(i.fee_key)}" data-std="${num(i.is_standard) ? 1 : 0}">
+          <label class="row" style="gap:10px"><input type="checkbox" class="k-fact" ${num(i.is_active == null ? 1 : i.is_active) ? 'checked' : ''} style="width:26px;height:26px;min-height:0;flex:none" ${dis}>
+          ${num(i.is_standard) ? `<b class="grow">${esc(i.fee_name)}</b><input type="hidden" class="k-fn" value="${esc(i.fee_name)}">` : `<input class="k-fn grow" value="${esc(i.fee_name)}" placeholder="Име на таксата" ${dis}>`}</label>
+          <div class="grid2" style="margin-top:6px"><div><input class="k-fa" inputmode="decimal" value="${esc(i.amount)}" placeholder="€" ${dis}></div>
+          <div><select class="k-fb" ${dis}>${BASIS.map(([v, l]) => `<option value="${v}" ${(i.basis || 'object') === v ? 'selected' : ''}>${l}</option>`).join('')}</select></div></div>
+          <div class="k-ffl" ${i.basis === 'floor' ? '' : 'hidden'} style="margin-top:6px"><div class="mut">Процент от таксата по етажи (напр. 1 етаж – 0%):</div>
+            <div class="grid2" style="margin-top:4px;grid-template-columns:repeat(3,1fr);gap:6px">${Array.from({ length: floors }, (_, k) => k + 1).map(fl => `<label class="row" style="gap:4px;font-size:.85em">Ет.${fl}<input class="k-fp" data-fl="${fl}" inputmode="numeric" value="${esc(pctFor(fl))}" style="min-height:40px;padding:6px" ${dis}>%</label>`).join('')}</div></div>
+        </div>`;
+      };
+      parts.push(`<div class="card" id="k-feecard"><h2>💶 Месечни такси ${stChip(F.details)}</h2>
+        <div class="grid2"><div><label class="l">Управление, € на обект</label><input id="k-f1" inputmode="decimal" value="${esc(x.manager_fee_amount != null ? x.manager_fee_amount : '')}" ${dis}></div>
+        <div><label class="l">Касиер, €</label><input id="k-f3" inputmode="decimal" value="${esc(x.cashier_fee_amount != null ? x.cashier_fee_amount : 0)}" ${dis}></div></div>
+        <label class="l">Фонд „Ремонт и обновяване“, €</label><input id="k-f2" inputmode="decimal" value="${esc(x.repair_fund_amount != null ? x.repair_fund_amount : '')}" ${dis}>
+        <div class="seg" style="margin-top:6px"><button class="${rf === 'fixed_object' ? 'on' : ''}" data-act="feeSeg" data-g="rf" data-v="fixed_object" ${dis}>Сума на обект</button><button class="${rf === 'ideal_parts_min' ? 'on' : ''}" data-act="feeSeg" data-g="rf" data-v="ideal_parts_min" ${dis}>По ид. части спрямо най-малкия</button></div>
+        <input type="hidden" id="k-rf" value="${esc(rf)}">
+        <h3>Режийни разходи</h3>
+        <div class="seg"><button class="${sep ? '' : 'on'}" data-act="feeSeg" data-g="om" data-v="common" ${dis}>Общи режийни</button><button class="${sep ? 'on' : ''}" data-act="feeSeg" data-g="om" data-v="separate" ${dis}>Разделени по видове</button></div>
+        <input type="hidden" id="k-om" value="${sep ? 'separate' : 'common'}">
+        <div data-om="common" ${sep ? 'hidden' : ''}>
+          <label class="l">Обща сума за режийни, €</label><input id="k-f4" inputmode="decimal" value="${esc(x.operating_common_amount != null ? x.operating_common_amount : 0)}" ${dis}>
+          <div class="seg" style="margin-top:6px"><button class="${cb === 'object' ? 'on' : ''}" data-act="feeSeg" data-g="cb" data-v="object" ${dis}>на обект</button><button class="${cb === 'person' ? 'on' : ''}" data-act="feeSeg" data-g="cb" data-v="person" ${dis}>на човек</button></div>
+          <input type="hidden" id="k-cb" value="${esc(cb)}">
+          ${F.common && F.common.rule_mode !== 'all' ? `<div class="note">Има освобождаване ${F.common.rule_mode === 'floor' ? 'по етажи' : 'на отделни обекти'} – запазва се. Промяна – в пълната версия.</div>` : ''}
+        </div>
+        <div data-om="separate" ${sep ? '' : 'hidden'}>
+          <div class="mut" style="margin:6px 0">Отметни таксите, които има входът, и въведи сумата.</div>
+          <div id="k-fees">${items.map(feeRow).join('')}</div>
+          ${closed ? '' : '<button class="btn lite" data-act="feeAdd">➕ Друга такса</button>'}
+        </div>
         <button class="btn" data-act="saveFee" ${dis}>💾 Запиши таксите</button></div>`);
     }
     for (const k of ['appointment', 'cashier']) {
@@ -1459,7 +1522,7 @@
     menu: () => menu(),
     closeMenu: el => el.closest('.menu').remove(),
     reload: () => render(),
-    refresh: async el => { el.closest('.menu') && el.closest('.menu').remove(); D.buildings = null; D.all = null; D.b = {}; D.m = {}; D.chair = {}; D.sec = {}; D.det = {}; await render(); toast('Обновено'); },
+    refresh: async el => { el.closest('.menu') && el.closest('.menu').remove(); D.buildings = null; D.all = null; D.b = {}; D.m = {}; D.chair = {}; D.sec = {}; D.det = {}; D.fees = {}; await render(); toast('Обновено'); },
     fs: el => { setFs(LS.get('fs', 18) + num(el.dataset.v)); },
     logout: async () => { await post('/api/auth/logout').catch(() => {}); D.user = null; location.hash = '#/'; location.reload(); },
     full: el => {
@@ -1526,14 +1589,43 @@
       if (mode === 'commission' && !ps.length) return toast('Избери поне един член на комисията', true);
       return withMid('Записвам…', () => post(`/api/agenda/${it.id}/revision-details`, { revision_mode: mode, extra_text: '', people: ps.map(p => ({ source_type: 'unit', unit_id: p.unit_id, person_name: p.person_name, property_no: p.property_no, person_quality: 'owner' })) }));
     },
+    feeSeg: el => {
+      el.parentNode.querySelectorAll('button').forEach(x => x.classList.toggle('on', x === el));
+      const g = el.dataset.g; root.querySelector('#k-' + g).value = el.dataset.v;
+      if (g === 'om') root.querySelectorAll('[data-om]').forEach(x => { x.hidden = x.dataset.om !== el.dataset.v; });
+    },
+    feeAdd: () => {
+      const key = 'custom_' + Date.now();
+      root.querySelector('#k-fees').insertAdjacentHTML('beforeend', `<div class="vrow k-fee" data-key="${key}" data-std="0">
+        <label class="row" style="gap:10px"><input type="checkbox" class="k-fact" checked style="width:26px;height:26px;min-height:0;flex:none"><input class="k-fn grow" placeholder="Име на таксата"></label>
+        <div class="grid2" style="margin-top:6px"><div><input class="k-fa" inputmode="decimal" placeholder="€"></div>
+        <div><select class="k-fb">${BASIS.filter(b => b[0] !== 'floor').map(([v, l]) => `<option value="${v}">${l}</option>`).join('')}</select></div></div></div>`);
+      const n = root.querySelectorAll('#k-fees .k-fn'); n[n.length - 1].focus();
+    },
     saveFee: () => {
-      const mid = curMid(), d = D.m[mid], it = itemFor(d, 'fee'), x = (D.det[mid] && D.det[mid].fee && D.det[mid].fee.details) || {};
-      const n = id => Number(String(root.querySelector(id).value || '0').replace(',', '.'));
-      const vals = [n('#k-f1'), n('#k-f2'), n('#k-f3'), n('#k-f4')];
-      if (vals.some(v => !isFinite(v) || v < 0)) return toast('Сумите трябва да са числа (напр. 2.56)', true);
-      return withMid('Записвам…', () => post(`/api/agenda/${it.id}/fee-decision-details`, {
-        manager_fee_amount: vals[0], repair_fund_amount: vals[1], cashier_fee_amount: vals[2], repair_fund_mode: x.repair_fund_mode || 'fixed_object',
-        operating_mode: x.operating_mode === 'separate' ? 'separate' : 'common', operating_common_amount: x.operating_mode === 'separate' ? 0 : vals[3], operating_common_basis: x.operating_common_basis || 'object', extra_text: x.extra_text || '' }));
+      const mid = curMid(), d = D.m[mid], it = itemFor(d, 'fee'), F = D.fees[mid] || { rules: {} }, x = F.details || {};
+      const n = v => Number(String(v == null || v === '' ? '0' : v).replace(',', '.'));
+      const q = id => root.querySelector(id).value;
+      const mode = q('#k-om');
+      const det = { manager_fee_amount: n(q('#k-f1')), cashier_fee_amount: n(q('#k-f3')), repair_fund_amount: n(q('#k-f2')), repair_fund_mode: q('#k-rf'),
+        operating_mode: mode, operating_common_amount: mode === 'separate' ? 0 : n(q('#k-f4')), operating_common_basis: q('#k-cb'), extra_text: x.extra_text || '' };
+      if ([det.manager_fee_amount, det.cashier_fee_amount, det.repair_fund_amount, det.operating_common_amount].some(v => !isFinite(v) || v < 0)) return toast('Сумите трябва да са числа (напр. 2.56)', true);
+      const items = [], rules = {};
+      if (mode === 'separate') {
+        for (const r of root.querySelectorAll('#k-fees .k-fee')) {
+          const name = r.querySelector('.k-fn').value.trim(), amount = n(r.querySelector('.k-fa').value), basis = r.querySelector('.k-fb').value, active = r.querySelector('.k-fact').checked;
+          if (!name) { if (!active || !amount) continue; return toast('Има такса без име', true); }
+          if (!isFinite(amount) || amount < 0) return toast(`„${name}“: сумата трябва да е число`, true);
+          items.push({ fee_key: r.dataset.key, fee_name: name, is_standard: +r.dataset.std, amount, basis, is_active: active ? 1 : 0 });
+          if (basis === 'floor') {
+            const ps = [...r.querySelectorAll('.k-fp')].map(i => ({ rule_type: 'floor', floor_no: +i.dataset.fl, percent: n(i.value) }));
+            if (ps.some(p => !isFinite(p.percent) || p.percent < 0)) return toast(`„${name}“: процентите по етажи трябва да са числа`, true);
+            rules[r.dataset.key] = { default_percent: 100, items: ps.filter(p => p.percent !== 100) };
+          }
+        }
+        if (!items.some(i => i.is_active)) return toast('Отметни поне една такса', true);
+      }
+      return withMid('Записвам таксите…', async () => { await saveFees(it.id, { details: det, items, rules, common: mode === 'common' ? F.common : null }); delete D.fees[mid]; toast('Таксите са записани'); });
     },
     chMode: el => {
       root.querySelector('#k-chmode').value = el.dataset.v;
@@ -1718,6 +1810,9 @@
     if (t.id === 'k-q') { SS.set('q', t.value); const l = root.querySelector('#k-bl'); if (l && D.buildings) l.innerHTML = bList(D.buildings.filter(b => !b.status || b.status === 'Активна'), t.value); }
     else if (t.id === 'k-aq') { SS.set('aq', t.value); filterUnits(t.value); }
     else if (t.classList.contains('k-ag')) agInput(t);
+  });
+  root.addEventListener('change', e => {
+    if (e.target.classList && e.target.classList.contains('k-fb')) { const b = e.target.closest('.k-fee').querySelector('.k-ffl'); if (b) b.hidden = e.target.value !== 'floor'; else if (e.target.value === 'floor') toast('По етажи – запиши и отвори отново, за да зададеш процентите'); }
   });
   root.addEventListener('focusout', e => { if (e.target.classList && e.target.classList.contains('k-ag') && agT) saveAg(); });
   root.addEventListener('keydown', e => { if (e.key === 'Enter' && (e.target.id === 'k-p' || e.target.id === 'k-u')) { e.preventDefault(); doLogin(); } });
