@@ -432,6 +432,29 @@ public class MainActivity extends BridgeActivity {
         }
     }
 
+    // Проверката за нова версия минава оттук – страницата на програмата не позволява връзки към други сайтове
+    private String latestRelease() {
+        try {
+            HttpURLConnection c = (HttpURLConnection) new URL("https://api.github.com/repos/capitalinvest70-ux/ki-protokol/releases/latest").openConnection();
+            c.setConnectTimeout(12000);
+            c.setReadTimeout(15000);
+            c.setRequestProperty("Accept", "application/vnd.github+json");
+            c.setRequestProperty("User-Agent", "Protokoli-KI");
+            c.setUseCaches(false);
+            int code = c.getResponseCode();
+            if (code != 200) return "ERR " + code;
+            try (InputStream in = c.getInputStream()) {
+                ByteArrayOutputStream bo = new ByteArrayOutputStream();
+                byte[] buf = new byte[16384];
+                int n;
+                while ((n = in.read(buf)) > 0) bo.write(buf, 0, n);
+                return bo.toString(StandardCharsets.UTF_8.name());
+            }
+        } catch (Exception e) {
+            return "ERR " + e.getMessage();
+        }
+    }
+
     private String update(String url) {
         if (url == null || !url.startsWith(UPD_PREFIX)) return "ERR Непознат адрес за обновяване";
         if (Build.VERSION.SDK_INT >= 26 && !getPackageManager().canRequestPackageInstalls()) {
@@ -632,6 +655,9 @@ public class MainActivity extends BridgeActivity {
 
         @JavascriptInterface
         public String appVersion() { return MainActivity.this.appVersion(); }
+
+        @JavascriptInterface
+        public String latestRelease() { return MainActivity.this.latestRelease(); }
 
         @JavascriptInterface
         public String update(String url) { return MainActivity.this.update(url); }

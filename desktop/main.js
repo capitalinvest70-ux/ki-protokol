@@ -38,6 +38,15 @@ ipcMain.handle('ki-version', () => {
   try { build = JSON.parse(fs.readFileSync(path.join(__dirname, 'build.json'), 'utf8')).build || 0; } catch (e) {}
   return { name: app.getVersion(), build };
 });
+// Проверката за нова версия минава оттук – страницата на програмата не позволява връзки към други сайтове
+ipcMain.handle('ki-latest', () => new Promise(res => {
+  https.get('https://api.github.com/repos/capitalinvest70-ux/ki-protokol/releases/latest',
+    { headers: { 'User-Agent': 'Protokoli-KI', Accept: 'application/vnd.github+json' } }, r => {
+      let body = ''; r.setEncoding('utf8');
+      r.on('data', c => { body += c; });
+      r.on('end', () => res(r.statusCode === 200 ? body : 'ERR ' + r.statusCode));
+    }).on('error', err => res('ERR ' + err.message));
+}));
 ipcMain.handle('ki-update', async (e, url, name) => {
   if (typeof url !== 'string' || !url.startsWith(UPD_PREFIX)) return 'ERR Непознат адрес за обновяване';
   const file = path.join(os.tmpdir(), String(name || 'Protokoli-KI-Setup.exe').replace(/[^\w.-]/g, '_'));

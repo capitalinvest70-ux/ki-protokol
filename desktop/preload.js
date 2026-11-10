@@ -12,6 +12,7 @@ contextBridge.exposeInMainWorld('KIDesktop', {
   shareTo: (file, mime, target, bcc, subject, text) => ipcRenderer.invoke('ki-share', file, mime, target, bcc, subject, text),
   asset: (name) => ipcRenderer.invoke('ki-asset', name),
   appVersion: () => ipcRenderer.invoke('ki-version'),
+  latestRelease: () => ipcRenderer.invoke('ki-latest'),
   update: (url, name) => ipcRenderer.invoke('ki-update', url, name),
   onUpdate: (cb) => ipcRenderer.on('ki-upd', (e, p, m) => cb(p, m)),
 });

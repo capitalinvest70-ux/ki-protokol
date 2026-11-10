@@ -858,9 +858,12 @@
     if (!me || !canUpdate()) { if (manual) toast('Обновяването работи в приложението за телефон и компютър', true); return; }
     let rel;
     try {
-      const r = await fetch(`https://api.github.com/repos/${UPD_REPO}/releases/latest`, { headers: { Accept: 'application/vnd.github+json' }, cache: 'no-store' });
-      if (!r.ok) throw new Error(r.status === 404 ? 'Не виждам новите версии – хранилището ki-protokol в GitHub трябва да е публично' : 'GitHub отговори ' + r.status);
-      rel = await r.json();
+      // през приложението (страницата на програмата не позволява връзки към GitHub)
+      const nat = window.KIAndroid && window.KIAndroid.latestRelease ? window.KIAndroid.latestRelease()
+        : window.KIDesktop && window.KIDesktop.latestRelease ? await window.KIDesktop.latestRelease() : null;
+      if (nat == null) throw new Error('Тази версия не може да проверява сама – свалете последната веднъж ръчно от GitHub');
+      if (/^ERR/.test(nat)) throw new Error(/404/.test(nat) ? 'Не виждам новите версии – хранилището ki-protokol трябва да е публично' : 'Няма връзка с GitHub (' + nat.replace(/^ERR\s*/, '') + ')');
+      rel = JSON.parse(nat);
     } catch (e) { if (manual) toast(e.message || 'Няма връзка с интернет', true); return; }
     LS.set('updAt', Date.now());
     const b = +((String(rel.tag_name || '').match(/build(\d+)/) || [])[1] || 0);
