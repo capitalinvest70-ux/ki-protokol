@@ -407,6 +407,15 @@
   @keyframes kimdraw { to { stroke-dashoffset:0; } }
   /* обновяване */
   #kim .updp .bar i { transition:width .3s var(--ease); background:linear-gradient(90deg,#1f78ea,#43bb59); }
+  /* 🎤 Говори */
+  #kim .aibar .dict { grid-column:1 / -1; min-height:50px; font-size:.9em; background:linear-gradient(135deg,#1f78ea,#0c45b3); color:#fff; border:0; box-shadow:0 6px 14px rgba(21,83,199,.25); }
+  #kim .aibar .dict.on { background:linear-gradient(135deg,#f0625a,#c62828); animation:kimpulse 1.4s infinite; }
+  #kim .dlive { grid-column:1 / -1; min-height:1.3em; padding:6px 10px; border-radius:12px; background:rgba(31,120,234,.08); color:#1553c7; font-size:.85em; font-style:italic; }
+  #kim .dlive:empty { display:none; }
+  /* 🎙️ Запис – 5-ти бутон в долната лента */
+  #kim .tabs button.rt b { background:linear-gradient(135deg,#f0625a,#c62828); color:#fff; }
+  #kim .tabs button.rt.on b { animation:kimpulse 1.4s infinite; }
+  #kim .tabs button.rt.on { color:#c62828; font-variant-numeric:tabular-nums; }
   @media (prefers-reduced-motion: reduce) { #kim *, #kim *::before, #kim *::after { animation-duration:.01ms !important; animation-delay:0s !important; transition-duration:.01ms !important; } }
   `;
   const deskCss = `
@@ -581,11 +590,12 @@
     if (cur === 'chair') cur = 'ppl';
     const T = [['att', '👥', 'Присъстващи'], ['ppl', '🧑‍💼', 'Хора и такси'], ['pts', '🗳️', 'Гласуване'], ['end', '✍️', 'Подписи и край']];
     $tabs.hidden = false;
-    $tabs.innerHTML = T.map(([k, i, l]) => `<button class="${cur === k ? 'on' : ''}" data-go="#/m/${mid}/${k}"><b>${i}</b>${l}</button>`).join('');
+    $tabs.innerHTML = T.map(([k, i, l]) => `<button class="${cur === k ? 'on' : ''}" data-go="#/m/${mid}/${k}"><b>${i}</b>${l}</button>`).join('') + recTab();
   }
   let lastDepth = 0, enterT = null;
   const html = (h, keepScroll) => {
     const prev = keepScroll ? rollSnap() : null;
+    if (dictT && window.KIAndroid && window.KIAndroid.dictStop) { window.KIAndroid.dictStop(); dictT = null; }
     const y = $main.scrollTop; $main.innerHTML = h; decorateAi($main); $main.scrollTop = keepScroll ? y : 0;
     setBars();
     if (prev) rollApply(prev);
@@ -604,7 +614,8 @@
     box.querySelectorAll('textarea').forEach(t => {
       if (t.dataset.noai || (t.nextElementSibling && t.nextElementSibling.classList.contains('aibar'))) return;
       const bar = document.createElement('div'); bar.className = 'aibar';
-      bar.innerHTML = AI_MODES.map(([m, l]) => `<button type="button" data-act="ai" data-mode="${m}" ${t.disabled ? 'disabled' : ''}>${l}</button>`).join('');
+      bar.innerHTML = (DICT ? `<button type="button" class="dict" data-act="dict" ${t.disabled ? 'disabled' : ''}>🎤 Говори – текстът се изписва сам</button><div class="dlive"></div>` : '')
+        + AI_MODES.map(([m, l]) => `<button type="button" data-act="ai" data-mode="${m}" ${t.disabled ? 'disabled' : ''}>${l}</button>`).join('');
       t.after(bar);
     });
   }
@@ -846,20 +857,75 @@
     document.addEventListener('visibilitychange', autoCheck);
   }
 
+  /* ---------- 🎤 Диктуване: говориш и текстът се изписва в полето ---------- */
+  const DICT = !!(window.KIAndroid && window.KIAndroid.dictStart) || DESK;
+  let dictT = null;   // полето, в което се пише в момента
+  function dictUi(on) {
+    root.querySelectorAll('.aibar .dict').forEach(b => {
+      const mine = on && dictT && b.parentElement.previousElementSibling === dictT;
+      b.classList.toggle('on', !!mine);
+      b.textContent = mine ? '■ Спри – слушам…' : '🎤 Говори – текстът се изписва сам';
+    });
+    if (!on) root.querySelectorAll('.aibar .dlive').forEach(d => { d.textContent = ''; });
+  }
+  function dictAppend(text) {
+    const t = dictT; if (!t || !text) return;
+    let v = t.value, add = text.trim();
+    const endsSentence = !v.trim() || /[.!?…]\s*$/.test(v);
+    if (endsSentence) add = add.charAt(0).toUpperCase() + add.slice(1);
+    t.value = v + (v && !/\s$/.test(v) ? ' ' : '') + add;
+    t.dispatchEvent(new Event('input', { bubbles: true }));
+    t.scrollTop = t.scrollHeight;
+  }
+  window.KIM_dict = (kind, text) => {
+    const live = dictT && dictT.nextElementSibling && dictT.nextElementSibling.querySelector('.dlive');
+    if (kind === 'ready') { if (live && !live.textContent) live.textContent = 'Говорете…'; }
+    else if (kind === 'part') { if (live) live.textContent = text || 'Говорете…'; }
+    else if (kind === 'final') { dictAppend(text); if (live) live.textContent = 'Говорете…'; }
+    else if (kind === 'err') { toast(text, true); dictT = null; dictUi(false); }
+    else if (kind === 'end') { if (dictT) { const t = dictT; dictT = null; dictUi(false); t.dispatchEvent(new Event('change', { bubbles: true })); } }
+  };
+  function dictToggle(el) {
+    const t = el.parentElement && el.parentElement.previousElementSibling;
+    if (!t || t.tagName !== 'TEXTAREA') return;
+    if (DESK && !window.KIAndroid) {
+      t.focus(); t.setSelectionRange(t.value.length, t.value.length);
+      toast('Натиснете клавишите ⊞ Windows + H и говорете – текстът се изписва в полето (безплатно, вградено в Windows)');
+      return;
+    }
+    if (dictT === t) { window.KIAndroid.dictStop(); return; }
+    if (dictT) window.KIAndroid.dictStop();
+    if (REC && recSt().state === 'rec') toast('Внимание: докато се записва събранието, микрофонът може да е зает');
+    const r = window.KIAndroid.dictStart();
+    if (r === 'PERM') {
+      toast('Разрешете достъп до микрофона');
+      window.KIM_dictPerm = ok => { window.KIM_dictPerm = null; if (ok) dictToggle(el); else toast('Без разрешение за микрофона не може да се диктува', true); };
+      return;
+    }
+    if (/^ERR/.test(r)) { toast(r.replace(/^ERR\s*/, ''), true); return; }
+    dictT = t; dictUi(true); haptic(10);
+  }
+
   /* ---------- 🎙️ Запис на събранието от микрофона (приложението за Android) ---------- */
   const REC = !!(window.KIAndroid && window.KIAndroid.recStart);
   const recSt = () => { try { return JSON.parse(window.KIAndroid.recState()); } catch (e) { return { state: 'idle', ms: 0 }; } };
   const fmtMs = ms => { const t = Math.floor((ms || 0) / 1000), h = Math.floor(t / 3600); return (h ? h + ':' : '') + pad(Math.floor(t / 60) % 60) + ':' + pad(t % 60); };
+  function recTab() {
+    if (!REC) return '';
+    const st = recSt();
+    return `<button class="rt ${st.state !== 'idle' ? 'on' : ''}" data-act="rec"><b>${st.state === 'paused' ? '⏸' : '🎙️'}</b><span class="rtl">${st.state === 'idle' ? 'Запис' : (st.state === 'rec' ? '● ' : '') + fmtMs(st.ms)}</span></button>`;
+  }
   function recBtn() {
     if (!REC) return '';
     const st = recSt();
-    if (st.state === 'idle' && !curMid()) return '';
+    if (st.state === 'idle' || curMid()) return '';
     return `<button class="recb ${st.state === 'rec' ? 'on' : st.state === 'paused' ? 'pz' : ''}" data-act="rec" aria-label="Запис">${st.state === 'rec' ? '● ' + fmtMs(st.ms) : st.state === 'paused' ? '⏸ ' + fmtMs(st.ms) : '🎙️'}</button>`;
   }
   if (REC) setInterval(() => {
-    const b = root.querySelector('.top .recb'), big = root.querySelector('.menu .rectime');
-    if (!b && !big) return;
+    const b = root.querySelector('.top .recb'), big = root.querySelector('.menu .rectime'), tb = root.querySelector('.tabs .rt');
+    if (!b && !big && !tb) return;
     const st = recSt();
+    if (tb) { tb.classList.toggle('on', st.state !== 'idle'); tb.querySelector('b').textContent = st.state === 'paused' ? '⏸' : '🎙️'; tb.querySelector('.rtl').textContent = st.state === 'idle' ? 'Запис' : (st.state === 'rec' ? '● ' : '') + fmtMs(st.ms); }
     if (b) { b.className = 'recb ' + (st.state === 'rec' ? 'on' : st.state === 'paused' ? 'pz' : ''); b.textContent = st.state === 'rec' ? '● ' + fmtMs(st.ms) : st.state === 'paused' ? '⏸ ' + fmtMs(st.ms) : '🎙️'; }
     if (big) big.textContent = fmtMs(st.ms);
   }, 1000);
@@ -2109,6 +2175,7 @@
     login: () => doLogin(),
     menu: () => menu(),
     ai: el => aiRewrite(el),
+    dict: el => dictToggle(el),
     upd: el => { el.closest('.menu').remove(); return run('Проверявам за нова версия…', () => checkUpdate(true)); },
     ordReset: el => { LS.del('border'); el.closest('.menu').remove(); render(true); toast('Входовете са по подразбиране'); },
     rec: () => recSheet(),

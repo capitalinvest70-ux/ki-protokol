@@ -19,6 +19,10 @@ import java.io.FileInputStream;
 import java.net.HttpURLConnection;
 import java.net.URL;
 import android.content.pm.PackageInfo;
+import android.speech.RecognitionListener;
+import android.speech.RecognizerIntent;
+import android.speech.SpeechRecognizer;
+import java.util.ArrayList;
 import android.os.Build;
 import android.util.Base64;
 import android.net.Uri;
@@ -97,6 +101,7 @@ public class MainActivity extends BridgeActivity {
 
     @Override
     public void onPause() {
+        if (dictOn) dictStop();
         super.onPause();
         CookieManager.getInstance().flush(); // да не иска парола всеки път
     }
@@ -483,9 +488,86 @@ public class MainActivity extends BridgeActivity {
         return "OK";
     }
 
+    /* ---------- 🎤 Диктуване: говориш и текстът се изписва (безплатно – разпознаването на Google в телефона) ---------- */
+    private SpeechRecognizer sr;
+    private boolean dictOn = false;
+
+    private String dictStart() {
+        if (Build.VERSION.SDK_INT >= 23 && checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
+            runOnUiThread(() -> requestPermissions(new String[]{Manifest.permission.RECORD_AUDIO}, 9));
+            return "PERM";
+        }
+        if (!SpeechRecognizer.isRecognitionAvailable(this)) return "ERR На телефона няма разпознаване на говор – инсталирайте или включете приложението Google";
+        runOnUiThread(() -> { dictOn = true; listen(); });
+        return "OK";
+    }
+
+    private void dictStop() {
+        runOnUiThread(() -> {
+            dictOn = false;
+            if (sr != null) { try { sr.stopListening(); } catch (Exception ignored) { } }
+        });
+    }
+
+    private static String first(Bundle b) {
+        ArrayList<String> r = b == null ? null : b.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION);
+        return r == null || r.isEmpty() ? "" : r.get(0);
+    }
+
+    private void dictJs(String kind, String text) {
+        js("window.KIM_dict&&KIM_dict(" + JSONObject.quote(kind) + "," + JSONObject.quote(text == null ? "" : text) + ")");
+    }
+
+    private void listen() {
+        if (sr == null) {
+            sr = SpeechRecognizer.createSpeechRecognizer(this);
+            sr.setRecognitionListener(new RecognitionListener() {
+                @Override public void onReadyForSpeech(Bundle p) { dictJs("ready", ""); }
+                @Override public void onBeginningOfSpeech() { }
+                @Override public void onRmsChanged(float v) { }
+                @Override public void onBufferReceived(byte[] b) { }
+                @Override public void onEndOfSpeech() { }
+                @Override public void onEvent(int t, Bundle p) { }
+                @Override public void onPartialResults(Bundle b) { dictJs("part", first(b)); }
+                @Override public void onResults(Bundle b) {
+                    dictJs("final", first(b));
+                    if (dictOn) listen(); else dictJs("end", "");
+                }
+                @Override public void onError(int e) {
+                    if (dictOn && (e == SpeechRecognizer.ERROR_NO_MATCH || e == SpeechRecognizer.ERROR_SPEECH_TIMEOUT
+                            || e == SpeechRecognizer.ERROR_CLIENT || e == SpeechRecognizer.ERROR_RECOGNIZER_BUSY)) {
+                        getBridge().getWebView().postDelayed(() -> { if (dictOn) listen(); }, 350);
+                        return;
+                    }
+                    boolean was = dictOn;
+                    dictOn = false;
+                    if (!was) { dictJs("end", ""); return; }
+                    String m = e == SpeechRecognizer.ERROR_NETWORK || e == SpeechRecognizer.ERROR_NETWORK_TIMEOUT ? "Няма интернет за разпознаването на говор"
+                            : e == SpeechRecognizer.ERROR_AUDIO ? "Микрофонът е зает (може би се записва събранието)"
+                            : e == SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS ? "Няма разрешение за микрофона"
+                            : "Разпознаването спря (код " + e + ")";
+                    dictJs("err", m);
+                }
+            });
+        }
+        Intent i = new Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH);
+        i.putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM);
+        i.putExtra(RecognizerIntent.EXTRA_LANGUAGE, "bg-BG");
+        i.putExtra(RecognizerIntent.EXTRA_LANGUAGE_PREFERENCE, "bg-BG");
+        i.putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true);
+        i.putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 1);
+        i.putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, 2500);
+        i.putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS, 2000);
+        try { sr.startListening(i); } catch (Exception e) { dictOn = false; dictJs("err", "Разпознаването не тръгна: " + e.getMessage()); }
+    }
+
     @Override
     public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+        if (requestCode == 9) {
+            boolean ok = Build.VERSION.SDK_INT < 23 || checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED;
+            js("window.KIM_dictPerm&&window.KIM_dictPerm(" + ok + ")");
+        }
         if (requestCode == 8) {
             boolean ok = Build.VERSION.SDK_INT < 23 || checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED;
             runOnUiThread(() -> getBridge().getWebView().evaluateJavascript("window.KIM_recPerm&&window.KIM_recPerm(" + ok + ")", null));
@@ -541,6 +623,12 @@ public class MainActivity extends BridgeActivity {
             if (name == null || !name.matches("[a-z0-9.-]+\\.js")) return "";
             return MainActivity.this.readAsset("public/" + name);
         }
+
+        @JavascriptInterface
+        public String dictStart() { return MainActivity.this.dictStart(); }
+
+        @JavascriptInterface
+        public void dictStop() { MainActivity.this.dictStop(); }
 
         @JavascriptInterface
         public String appVersion() { return MainActivity.this.appVersion(); }
