@@ -55,6 +55,8 @@ jobs:
           sed -i 's#<uses-permission android:name="android.permission.INTERNET" />#<uses-permission android:name="android.permission.INTERNET" />\n    <uses-permission android:name="android.permission.RECORD_AUDIO" />\n    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />\n    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />\n    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />\n    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />\n    <uses-permission android:name="android.permission.VIBRATE" />#' $M
           sed -i 's#</application>#    <service android:name=".RecService" android:exported="false" android:foregroundServiceType="microphone" />\n    </application>#' $M
           grep -n "RECORD_AUDIO\|RecService" $M
+          grep -q windowSoftInputMode $M || sed -i 's#<activity#<activity android:windowSoftInputMode="adjustResize"#' $M
+          grep -n windowSoftInputMode $M
           sed -i 's#</manifest>#    <queries>\n        <intent><action android:name="android.intent.action.SEND" /><data android:mimeType="*/*" /></intent>\n        <intent><action android:name="android.speech.RecognitionService" /></intent>\n        <package android:name="com.viber.voip" />\n        <package android:name="com.google.android.gm" />\n        <package android:name="com.microsoft.office.outlook" />\n    </queries>\n</manifest>#' $M
           grep -n -A3 "<queries>" $M
           G=android/app/build.gradle

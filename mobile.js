@@ -339,7 +339,10 @@
     -webkit-backdrop-filter:blur(22px) saturate(180%); backdrop-filter:blur(22px) saturate(180%); border-bottom:1px solid rgba(120,175,255,.55); box-shadow:0 8px 24px rgba(9,38,92,.16); }
   #kim .tabs { position:absolute; left:0; right:0; bottom:0; z-index:5; background:rgba(255,255,255,.7);
     -webkit-backdrop-filter:blur(22px) saturate(180%); backdrop-filter:blur(22px) saturate(180%); border-top:1px solid rgba(255,255,255,.75); }
-  #kim .tabs[hidden] { display:none; }
+  #kim .tabs[hidden], #kim.kbd .tabs { display:none; }
+  #kim.kbd .stick { position:static; }
+  #kim .main { scroll-padding-top:calc(var(--toph,64px) + 10px); scroll-padding-bottom:calc(var(--tabh,0px) + 16px); }
+  #kim .navrow { margin-top:4px; }
   #kim .search { top:calc(var(--toph,64px) - 2px); background:transparent; padding-top:6px; }
   #kim .search input { background:rgba(255,255,255,.82); -webkit-backdrop-filter:blur(16px); backdrop-filter:blur(16px); }
   #kim .stick { bottom:calc(var(--tabh,0px) - 28px); background:linear-gradient(rgba(243,247,253,0), rgba(243,247,253,.92) 35%); }
@@ -707,8 +710,21 @@
     const w = WIDE();
     root.classList.toggle('wide', w); root.classList.toggle('side', w && !$tabs.hidden);
     root.style.setProperty('--toph', $top.offsetHeight + 'px');
-    root.style.setProperty('--tabh', (w || $tabs.hidden ? 0 : $tabs.offsetHeight) + 'px');
+    root.style.setProperty('--tabh', (w || $tabs.hidden || root.classList.contains('kbd') ? 0 : $tabs.offsetHeight) + 'px');
   }
+  // Клавиатурата: когато е отворена, долната лента се скрива и полето за писане остава видимо
+  let fullH = window.innerHeight;
+  const typing = () => { const a = document.activeElement; return !!(a && root.contains(a) && /^(TEXTAREA|INPUT|SELECT)$/.test(a.tagName) && !/^(checkbox|radio|button)$/.test(a.type || '')); };
+  function kbdCheck() {
+    if (!typing()) fullH = Math.max(fullH, window.innerHeight);
+    const open = typing() && window.innerHeight < fullH * 0.8;
+    const was = root.classList.contains('kbd');
+    root.classList.toggle('kbd', open); setBars();
+    if (open) { const a = document.activeElement; setTimeout(() => { try { a.scrollIntoView({ block: 'nearest' }); } catch (e) {} }, was ? 0 : 80); }
+  }
+  window.addEventListener('resize', kbdCheck);
+  root.addEventListener('focusin', () => setTimeout(kbdCheck, 350));
+  root.addEventListener('focusout', () => setTimeout(kbdCheck, 150));
   if (window.ResizeObserver) { const ro = new ResizeObserver(setBars); ro.observe($top); ro.observe($tabs); }
   window.addEventListener('resize', setBars);
   const haptic = ms => { try { if (navigator.vibrate) navigator.vibrate(ms || 8); } catch (e) {} };
@@ -1797,6 +1813,7 @@
     const closed = isClosed(m), done = num(a.is_completed) === 1;
     html(`<div class="card"><div class="ttl" style="font-size:1.05em">${esc(a.title)}</div>
       <div class="mut" style="margin-top:6px">Нужно мнозинство: ${esc(req || '—')} от ${a.majority_base === 'present' ? 'присъстващите' : 'всички идеални части'}</div>
+      ${done && !closed ? `<div class="row" style="margin-top:10px"><span class="chip ok">✓ Приключена</span><span class="grow"></span><button class="btn lite sm" data-act="done" data-v="0">↩️ Отвори отново</button></div>` : ''}
       ${special ? `<button class="btn out" data-go="#/m/${mid}/ppl">🧑‍💼 Имена и суми – „Хора и такси“ ›</button>` : fixed ? `<button class="btn out" data-act="full" data-m="${mid}" data-p="${aid}">⚙️ Подробности в пълната версия ›</button>` : ''}</div>
 
       <div class="card"><h2>🗳️ Гласуване</h2>${resBox(t, quorumOf(d))}
@@ -1810,7 +1827,7 @@
       <label class="l">Предложение / решение${fixed && !(m.meeting_type === 'renewal' && num(a.item_no) === 1) ? '' : ' (задължително)'}</label><textarea class="k-ag ${!fixed && !String(a.proposal || '').trim() ? 'need' : ''}" data-f="proposal" ${closed ? 'disabled' : ''}>${esc(a.proposal || '')}</textarea>
       <div class="mut" id="k-agst" style="margin-top:6px">Записва се само.</div></div>
 
-      <div class="stick">${closed ? '' : `<button class="btn big ${done ? 'lite' : 'ok'}" data-act="done" data-v="${done ? 0 : 1}" style="margin-top:0">${done ? '↩️ Отвори точката отново' : '✓ Приключи точката' + (next ? ' и напред' : '')}</button>`}
+      <div class="${done || closed ? 'navrow' : 'stick'}">${closed || done ? '' : `<button class="btn big ok" data-act="done" data-v="1" style="margin-top:0">✓ Приключи точката${next ? ' и напред' : ''}</button>`}
       <div class="grid2" style="margin-top:10px"><button class="btn out" ${prev ? `data-go="#/m/${mid}/p/${prev.id}"` : 'disabled'}>‹ Предишна</button>
       <button class="btn out" ${next ? `data-go="#/m/${mid}/p/${next.id}"` : `data-go="#/m/${mid}/end"`}>${next ? 'Следваща ›' : 'Към края ›'}</button></div></div>`, keep);
   }
