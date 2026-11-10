@@ -52,7 +52,7 @@ jobs:
           M=android/app/src/main/AndroidManifest.xml
           sed -i 's#<uses-permission android:name="android.permission.INTERNET" />#<uses-permission android:name="android.permission.INTERNET" />\n    <uses-permission android:name="android.permission.BLUETOOTH" android:maxSdkVersion="30" />\n    <uses-permission android:name="android.permission.BLUETOOTH_ADMIN" android:maxSdkVersion="30" />\n    <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />#' $M
           grep -n BLUETOOTH $M
-          sed -i 's#<uses-permission android:name="android.permission.INTERNET" />#<uses-permission android:name="android.permission.INTERNET" />\n    <uses-permission android:name="android.permission.RECORD_AUDIO" />\n    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />\n    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />\n    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />#' $M
+          sed -i 's#<uses-permission android:name="android.permission.INTERNET" />#<uses-permission android:name="android.permission.INTERNET" />\n    <uses-permission android:name="android.permission.RECORD_AUDIO" />\n    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />\n    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />\n    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />\n    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />\n    <uses-permission android:name="android.permission.VIBRATE" />#' $M
           sed -i 's#</application>#    <service android:name=".RecService" android:exported="false" android:foregroundServiceType="microphone" />\n    </application>#' $M
           grep -n "RECORD_AUDIO\|RecService" $M
           sed -i 's#</manifest>#    <queries>\n        <intent><action android:name="android.intent.action.SEND" /><data android:mimeType="*/*" /></intent>\n        <package android:name="com.viber.voip" />\n        <package android:name="com.google.android.gm" />\n        <package android:name="com.microsoft.office.outlook" />\n    </queries>\n</manifest>#' $M
@@ -78,6 +78,10 @@ jobs:
         with: { node-version: 20 }
       - run: cp ../skin.js ../print.js ../brand.js ../mobile.js ../vendor/html2canvas.min.js . && cp ../vendor/mammoth.browser.min.js mammoth.js
       - run: npm install
+      - name: Build number
+        run: |
+          echo '{"build": ${{ github.run_number }}}' > build.json
+          cat build.json
       - run: npm run dist
         env: { CSC_IDENTITY_AUTO_DISCOVERY: "false" }
       - uses: actions/upload-artifact@v4
@@ -98,6 +102,8 @@ jobs:
           name: Протоколи КИ v${{ needs.android.outputs.ver }} (build ${{ github.run_number }})
           target_commitish: ${{ github.sha }}
           body: |
+            ${{ github.event.head_commit.message }}
+
             📱 Телефон: свалете файла .apk и го отворете.
             💻 Компютър: свалете Protokoli-KI-Setup-….exe и го отворете – на работния плот се появява „Протоколи КИ“.
           files: out/*

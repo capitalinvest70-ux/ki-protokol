@@ -16,6 +16,9 @@ import androidx.core.content.FileProvider;
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.FileInputStream;
+import java.net.HttpURLConnection;
+import java.net.URL;
+import android.content.pm.PackageInfo;
 import android.os.Build;
 import android.util.Base64;
 import android.net.Uri;
@@ -403,6 +406,83 @@ public class MainActivity extends BridgeActivity {
         }
     }
 
+    /* ---------- 🚀 Обновяване: сваля новия APK от GitHub и отваря инсталацията ---------- */
+    private static final String UPD_PREFIX = "https://github.com/capitalinvest70-ux/ki-protokol/releases/download/";
+
+    private void js(String code) {
+        runOnUiThread(() -> getBridge().getWebView().evaluateJavascript(code, null));
+    }
+
+    @SuppressWarnings("deprecation")
+    private String appVersion() {
+        try {
+            PackageInfo pi = getPackageManager().getPackageInfo(getPackageName(), 0);
+            long code = Build.VERSION.SDK_INT >= 28 ? pi.getLongVersionCode() : pi.versionCode;
+            JSONObject o = new JSONObject();
+            o.put("name", pi.versionName);
+            o.put("code", code);
+            return o.toString();
+        } catch (Exception e) {
+            return "{\"name\":\"?\",\"code\":0}";
+        }
+    }
+
+    private String update(String url) {
+        if (url == null || !url.startsWith(UPD_PREFIX)) return "ERR Непознат адрес за обновяване";
+        if (Build.VERSION.SDK_INT >= 26 && !getPackageManager().canRequestPackageInstalls()) {
+            runOnUiThread(() -> {
+                try {
+                    startActivity(new Intent(android.provider.Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, Uri.parse("package:" + getPackageName())));
+                } catch (Exception ignored) { }
+            });
+            return "PERM";
+        }
+        new Thread(() -> {
+            try {
+                File dir = new File(getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS), "upd");
+                if (!dir.exists()) dir.mkdirs();
+                File f = new File(dir, "Protokoli-KI-update.apk");
+                if (f.exists()) f.delete();
+                HttpURLConnection c = (HttpURLConnection) new URL(url).openConnection();
+                c.setInstanceFollowRedirects(true);
+                c.setConnectTimeout(15000);
+                c.setReadTimeout(30000);
+                c.setRequestProperty("User-Agent", "Protokoli-KI");
+                int code = c.getResponseCode();
+                if (code != 200) throw new Exception("сървърът отговори " + code);
+                long total = c.getContentLengthLong(), got = 0;
+                int last = -1;
+                try (InputStream in = c.getInputStream(); OutputStream os = new FileOutputStream(f)) {
+                    byte[] buf = new byte[65536];
+                    int n;
+                    while ((n = in.read(buf)) > 0) {
+                        os.write(buf, 0, n);
+                        got += n;
+                        int p = total > 0 ? (int) Math.min(99, got * 100 / total) : 0;
+                        if (p != last) { last = p; js("window.KIM_updP&&KIM_updP(" + p + ")"); }
+                    }
+                }
+                js("window.KIM_updP&&KIM_updP(100)");
+                runOnUiThread(() -> {
+                    try {
+                        Uri u = Build.VERSION.SDK_INT >= 24
+                                ? FileProvider.getUriForFile(this, getPackageName() + ".fileprovider", f)
+                                : Uri.fromFile(f);
+                        Intent i = new Intent(Intent.ACTION_VIEW);
+                        i.setDataAndType(u, "application/vnd.android.package-archive");
+                        i.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_ACTIVITY_NEW_TASK);
+                        startActivity(i);
+                    } catch (Exception e) {
+                        js("window.KIM_updP&&KIM_updP(-1," + JSONObject.quote("Не можах да отворя инсталацията: " + e.getMessage()) + ")");
+                    }
+                });
+            } catch (Exception e) {
+                js("window.KIM_updP&&KIM_updP(-1," + JSONObject.quote("Свалянето спря: " + e.getMessage()) + ")");
+            }
+        }).start();
+        return "OK";
+    }
+
     @Override
     public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults);
@@ -461,6 +541,12 @@ public class MainActivity extends BridgeActivity {
             if (name == null || !name.matches("[a-z0-9.-]+\\.js")) return "";
             return MainActivity.this.readAsset("public/" + name);
         }
+
+        @JavascriptInterface
+        public String appVersion() { return MainActivity.this.appVersion(); }
+
+        @JavascriptInterface
+        public String update(String url) { return MainActivity.this.update(url); }
 
         @JavascriptInterface
         public String recStart(String name) { return MainActivity.this.recStart(name); }

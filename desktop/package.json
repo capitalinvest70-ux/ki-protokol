@@ -1,7 +1,7 @@
 {
   "name": "protokoli-ki",
   "productName": "Protokoli KI",
-  "version": "2.5.0",
+  "version": "2.6.0",
   "description": "Протоколи КИ – Програма за протокол с вида на Капитал Инвест",
   "author": "Капитал Инвест България",
   "main": "main.js",
@@ -21,7 +21,8 @@
       "mobile.js",
       "mammoth.js",
       "html2canvas.min.js",
-      "icon.png"
+      "icon.png",
+      "build.json"
     ],
     "win": {
       "target": "nsis",

@@ -5,6 +5,7 @@ const path = require('path');
 const fs = require('fs');
 const os = require('os');
 const net = require('net');
+const https = require('https');
 
 const SITE = 'https://protocol-app-production-cc1d.up.railway.app/';
 // html2canvas (за печат) + модул за печат + мобилният изглед (същият като на телефона) + скин за пълната версия
@@ -13,6 +14,41 @@ const SKIN = ['html2canvas.min.js', 'print.js', 'brand.js', 'mobile.js', 'skin.j
 const DOWNLOAD_RE = /(-docx|download=word)/;
 
 if (!app.requestSingleInstanceLock()) app.quit();
+
+/* ---------- 🚀 Обновяване: сваля новия инсталатор от GitHub и го пуска ---------- */
+const UPD_PREFIX = 'https://github.com/capitalinvest70-ux/ki-protokol/releases/download/';
+function fetchTo(url, file, onProgress, hops = 0) {
+  return new Promise((res, rej) => {
+    https.get(url, { headers: { 'User-Agent': 'Protokoli-KI' } }, r => {
+      if ([301, 302, 303, 307, 308].includes(r.statusCode) && r.headers.location && hops < 6) {
+        r.resume(); return fetchTo(new URL(r.headers.location, url).href, file, onProgress, hops + 1).then(res, rej);
+      }
+      if (r.statusCode !== 200) { r.resume(); return rej(new Error('сървърът отговори ' + r.statusCode)); }
+      const total = +r.headers['content-length'] || 0; let got = 0, last = -1;
+      const out = fs.createWriteStream(file);
+      r.on('data', c => { got += c.length; const p = total ? Math.min(99, Math.floor(got * 100 / total)) : 0; if (p !== last) { last = p; onProgress(p); } });
+      r.on('error', rej); out.on('error', rej);
+      out.on('finish', () => out.close(() => res(file)));
+      r.pipe(out);
+    }).on('error', rej);
+  });
+}
+ipcMain.handle('ki-version', () => {
+  let build = 0;
+  try { build = JSON.parse(fs.readFileSync(path.join(__dirname, 'build.json'), 'utf8')).build || 0; } catch (e) {}
+  return { name: app.getVersion(), build };
+});
+ipcMain.handle('ki-update', async (e, url, name) => {
+  if (typeof url !== 'string' || !url.startsWith(UPD_PREFIX)) return 'ERR Непознат адрес за обновяване';
+  const file = path.join(os.tmpdir(), String(name || 'Protokoli-KI-Setup.exe').replace(/[^\w.-]/g, '_'));
+  const send = (p, m) => { try { e.sender.send('ki-upd', p, m); } catch (x) {} };
+  try {
+    await fetchTo(url, file, p => send(p));
+    send(100);
+    setTimeout(() => { shell.openPath(file); setTimeout(() => app.quit(), 1500); }, 700);
+    return 'OK';
+  } catch (err) { send(-1, 'Свалянето спря: ' + err.message); return 'ERR ' + err.message; }
+});
 
 let win;
 

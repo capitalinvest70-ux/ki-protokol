@@ -328,6 +328,86 @@
   #kim .recrow { display:flex; align-items:center; gap:8px; padding:10px 0; border-top:1px solid var(--line); }
   #kim .recrow .btn { margin:0; }
   #kim.desk .hero .lg { height:84px; }
+
+  /* ===== iPhone стил: стъкло, пружини, плавни движения ===== */
+  #kim { --ease:cubic-bezier(.16,1,.3,1); --spring:cubic-bezier(.34,1.56,.64,1); }
+  #kim::before { content:''; position:absolute; inset:0; pointer-events:none; z-index:0;
+    background:radial-gradient(45% 32% at 8% 12%, rgba(59,139,255,.24), transparent 70%), radial-gradient(38% 30% at 96% 34%, rgba(139,90,216,.17), transparent 70%),
+      radial-gradient(42% 30% at 25% 96%, rgba(243,195,74,.17), transparent 70%), radial-gradient(36% 26% at 92% 88%, rgba(92,191,79,.15), transparent 70%); }
+  #kim .main { position:relative; z-index:1; padding-top:calc(var(--toph,64px) + 12px); padding-bottom:calc(var(--tabh,0px) + 28px); }
+  #kim .top { position:absolute; top:0; left:0; right:0; z-index:5; background:linear-gradient(100deg,rgba(8,34,86,.93),rgba(16,66,170,.88));
+    -webkit-backdrop-filter:blur(22px) saturate(180%); backdrop-filter:blur(22px) saturate(180%); border-bottom:1px solid rgba(120,175,255,.55); box-shadow:0 8px 24px rgba(9,38,92,.16); }
+  #kim .tabs { position:absolute; left:0; right:0; bottom:0; z-index:5; background:rgba(255,255,255,.7);
+    -webkit-backdrop-filter:blur(22px) saturate(180%); backdrop-filter:blur(22px) saturate(180%); border-top:1px solid rgba(255,255,255,.75); }
+  #kim .tabs[hidden] { display:none; }
+  #kim .search { top:calc(var(--toph,64px) - 2px); background:transparent; padding-top:6px; }
+  #kim .search input { background:rgba(255,255,255,.82); -webkit-backdrop-filter:blur(16px); backdrop-filter:blur(16px); }
+  #kim .stick { bottom:calc(var(--tabh,0px) - 28px); background:linear-gradient(rgba(243,247,253,0), rgba(243,247,253,.92) 35%); }
+  #kim .card, #kim .item, #kim .unit { background:rgba(255,255,255,.86); }
+  #kim .unit.on { background:rgba(240,251,244,.92); }
+  #kim .toast { background:rgba(13,26,54,.84); -webkit-backdrop-filter:blur(20px); backdrop-filter:blur(20px); border-radius:18px; transition:opacity .3s, transform .45s var(--spring); }
+  /* натискане: потъва до 95% и пружинира обратно */
+  #kim .btn, #kim .item, #kim .seg button, #kim .chips button, #kim .aibar button, #kim .tabs button b, #kim .recbig, #kim .top .ib, #kim .recb, #kim .unit .ubody, #kim .tick {
+    transition:transform .5s var(--spring), filter .2s, background-color .2s, box-shadow .25s; }
+  #kim .btn:active, #kim .seg button:active, #kim .chips button:active, #kim .aibar button:active, #kim .recbig:active, #kim .top .ib:active, #kim .recb:active, #kim .tick:active {
+    transform:scale(.95); transition-duration:.08s; }
+  #kim .item:active, #kim .unit .ubody:active { transform:scale(.97); transition-duration:.08s; }
+  #kim .tabs button:active b { transform:scale(.86); transition-duration:.08s; }
+  /* прозорците отдолу: прозрачни, плъзгат се нагоре, затварят се с плъзгане надолу */
+  #kim .menu { background:rgba(5,15,35,.34); animation:kimfade .3s ease-out both; }
+  #kim .menu .sheet { position:relative; background:rgba(247,249,254,.8); -webkit-backdrop-filter:blur(30px) saturate(180%); backdrop-filter:blur(30px) saturate(180%);
+    border-radius:28px 28px 0 0; border:1px solid rgba(255,255,255,.7); box-shadow:0 -12px 40px rgba(9,38,92,.25); padding-top:24px; animation:kimsheet .35s var(--ease) both; }
+  #kim .menu .sheet::before { content:''; position:absolute; top:9px; left:50%; width:42px; height:5px; margin-left:-21px; border-radius:3px; background:rgba(13,45,107,.25); }
+  #kim .menu .sheet.drag { animation:none; transition:none; }
+  #kim .menu.out { animation:kimfadeout .26s ease-in both; pointer-events:none; }
+  #kim .menu.out .sheet { animation:kimsheetout .26s cubic-bezier(.4,0,1,1) both; }
+  #kim .menu .card { background:rgba(255,255,255,.75); }
+  @keyframes kimsheet { from { transform:translateY(100%); } to { transform:none; } }
+  @keyframes kimsheetout { to { transform:translateY(100%); } }
+  @keyframes kimfade { from { background:rgba(5,15,35,0); } }
+  @keyframes kimfadeout { to { background:rgba(5,15,35,0); } }
+  #kim.desk .menu .sheet { border-radius:26px; animation:kimpop .35s var(--ease) both; }
+  #kim.desk .menu.out .sheet { animation:kimpopout .22s ease-in both; }
+  @keyframes kimpop { from { opacity:0; transform:translateY(22px) scale(.96); } }
+  @keyframes kimpopout { to { opacity:0; transform:scale(.96); } }
+  /* екраните влизат плавно – бързо в началото, после забавя (ease-out 350 ms) */
+  #kim .main.enter > * { animation:kimin .35s var(--ease) both; }
+  #kim .main.enter.back > * { animation-name:kiminb; }
+  #kim .main.enter > *:nth-child(2) { animation-delay:.03s; } #kim .main.enter > *:nth-child(3) { animation-delay:.06s; }
+  #kim .main.enter > *:nth-child(4) { animation-delay:.09s; } #kim .main.enter > *:nth-child(5) { animation-delay:.12s; }
+  #kim .main.enter > *:nth-child(n+6) { animation-delay:.15s; }
+  @keyframes kimin { from { opacity:0; transform:translateX(24px); } }
+  @keyframes kiminb { from { opacity:0; transform:translateX(-24px); } }
+  #kim details > *:not(summary) { animation:kimdown .35s var(--ease) both; }
+  @keyframes kimdown { from { opacity:0; transform:translateY(-8px); } }
+  /* въртящи се цифри */
+  #kim .roll { display:inline-flex; overflow:hidden; height:1.15em; line-height:1.15em; vertical-align:bottom; }
+  #kim .roll .col { display:flex; flex-direction:column; transition:transform .6s cubic-bezier(.2,.9,.25,1.12); }
+  #kim .roll .col i { display:block; height:1.15em; font-style:normal; }
+  /* дръпни надолу за обновяване */
+  #kim .ptr { position:absolute; left:50%; top:calc(var(--toph,64px) + 6px); z-index:4; width:42px; height:42px; margin-left:-21px; border-radius:50%;
+    background:rgba(255,255,255,.9); -webkit-backdrop-filter:blur(12px); backdrop-filter:blur(12px); box-shadow:0 6px 16px rgba(13,45,107,.22);
+    display:flex; align-items:center; justify-content:center; opacity:0; pointer-events:none; }
+  #kim .ptr svg { width:22px; height:22px; }
+  #kim .ptr.spin svg { animation:kimspin .8s linear infinite; }
+  #kim .ptr.back, #kim .main.ptr-back { transition:transform .45s var(--spring), opacity .3s; }
+  /* плъзгане за подредба */
+  #kim #k-bl .item.shift { transition:transform .25s var(--ease); }
+  #kim #k-bl .item.lift { position:relative; z-index:3; transition:box-shadow .2s; box-shadow:0 20px 44px rgba(13,45,107,.3); }
+  #kim .hint { color:var(--mut); font-size:.78em; margin:-2px 4px 10px; }
+  /* успех: първо се рисува кръгът, после отметката */
+  #kim .okfx { position:fixed; inset:0; z-index:10; display:flex; align-items:center; justify-content:center; pointer-events:none; }
+  #kim .okfx > div { background:rgba(255,255,255,.84); -webkit-backdrop-filter:blur(26px) saturate(180%); backdrop-filter:blur(26px) saturate(180%);
+    border-radius:30px; padding:22px 26px 18px; min-width:190px; max-width:82vw; text-align:center; box-shadow:0 22px 54px rgba(9,38,92,.28);
+    color:var(--navy); font-weight:700; animation:kimpop .35s var(--ease) both; }
+  #kim .okfx.out > div { animation:kimpopout .25s ease-in both; }
+  #kim .okfx svg { width:76px; height:76px; display:block; margin:0 auto 10px; }
+  #kim .okfx .c { fill:none; stroke:#2e9e45; stroke-width:5; stroke-linecap:round; stroke-dasharray:164; stroke-dashoffset:164; transform:rotate(-90deg); transform-origin:50% 50%; animation:kimdraw .45s var(--ease) .05s forwards; }
+  #kim .okfx .t { fill:none; stroke:#2e9e45; stroke-width:6; stroke-linecap:round; stroke-linejoin:round; stroke-dasharray:40; stroke-dashoffset:40; animation:kimdraw .28s ease-out .45s forwards; }
+  @keyframes kimdraw { to { stroke-dashoffset:0; } }
+  /* обновяване */
+  #kim .updp .bar i { transition:width .3s var(--ease); background:linear-gradient(90deg,#1f78ea,#43bb59); }
+  @media (prefers-reduced-motion: reduce) { #kim *, #kim *::before, #kim *::after { animation-duration:.01ms !important; animation-delay:0s !important; transition-duration:.01ms !important; } }
   `;
   const deskCss = `
   #kim.desk .top { padding-left:max(8px, calc(50% - 500px)); padding-right:max(8px, calc(50% - 500px)); }
@@ -359,6 +439,7 @@
 
   let toastT;
   function toast(msg, err) {
+    if (!err && /^✓|✓$/.test(String(msg).trim())) { success(String(msg).replace(/^✓\s*|\s*✓$/g, '')); return; }
     $toast.textContent = msg; $toast.classList.toggle('err', !!err); $toast.classList.remove('hide');
     clearTimeout(toastT); toastT = setTimeout(() => $toast.classList.add('hide'), err ? 5000 : 2400);
   }
@@ -502,7 +583,19 @@
     $tabs.hidden = false;
     $tabs.innerHTML = T.map(([k, i, l]) => `<button class="${cur === k ? 'on' : ''}" data-go="#/m/${mid}/${k}"><b>${i}</b>${l}</button>`).join('');
   }
-  const html = (h, keepScroll) => { const y = $main.scrollTop; $main.innerHTML = h; decorateAi($main); $main.scrollTop = keepScroll ? y : 0; };
+  let lastDepth = 0, enterT = null;
+  const html = (h, keepScroll) => {
+    const prev = keepScroll ? rollSnap() : null;
+    const y = $main.scrollTop; $main.innerHTML = h; decorateAi($main); $main.scrollTop = keepScroll ? y : 0;
+    setBars();
+    if (prev) rollApply(prev);
+    if (!keepScroll) {
+      const dpt = (location.hash || '#/').split('/').filter(Boolean).length;
+      $main.classList.remove('enter', 'back'); void $main.offsetWidth;
+      $main.classList.add('enter'); if (dpt < lastDepth) $main.classList.add('back');
+      lastDepth = dpt; clearTimeout(enterT); enterT = setTimeout(() => $main.classList.remove('enter', 'back'), 750);
+    }
+  };
 
   /* ---------- ✨ Редакция на текста (същата като в пълната версия на програмата) ---------- */
   const AI_MODES = [['edit', '✨ Редактирай'], ['professional', '🧾 Професионално'], ['short', '✂️ Кратко и ясно']];
@@ -546,6 +639,211 @@
     m.querySelector('[data-x=use]').onclick = () => put(m.querySelector('.k-air').value.trim());
     m.querySelector('[data-x=add]').onclick = () => put(old.replace(/\s+$/, '') + '\n' + m.querySelector('.k-air').value.trim());
     m.querySelector('[data-x=no]').onclick = () => m.remove();
+  }
+
+  /* ---------- ✨ Плавност: ленти, вибрация, успех, въртящи се цифри ---------- */
+  let dragging = null, suppressClick = false;
+  function setBars() {
+    root.style.setProperty('--toph', $top.offsetHeight + 'px');
+    root.style.setProperty('--tabh', ($tabs.hidden ? 0 : $tabs.offsetHeight) + 'px');
+  }
+  if (window.ResizeObserver) { const ro = new ResizeObserver(setBars); ro.observe($top); ro.observe($tabs); }
+  window.addEventListener('resize', setBars);
+  const haptic = ms => { try { if (navigator.vibrate) navigator.vibrate(ms || 8); } catch (e) {} };
+  root.addEventListener('pointerdown', e => { if (e.pointerType === 'touch' && e.target.closest('.btn, .seg button, .tabs button, .recbig, .tick, .aibar button')) haptic(6); }, { passive: true });
+  root.addEventListener('click', e => { if (suppressClick) { suppressClick = false; e.stopPropagation(); e.preventDefault(); } }, true);
+
+  function success(msg) {
+    const old = root.querySelector('.okfx'); if (old) old.remove();
+    const o = document.createElement('div'); o.className = 'okfx';
+    o.innerHTML = `<div><svg viewBox="0 0 64 64"><circle class="c" cx="32" cy="32" r="26"/><path class="t" d="M20 33 l8 8 l16 -17"/></svg>${esc(msg || 'Готово')}</div>`;
+    root.appendChild(o); setTimeout(() => haptic(14), 450);
+    setTimeout(() => o.classList.add('out'), 1350); setTimeout(() => o.remove(), 1620);
+  }
+
+  // Числата се завъртат до новата стойност – цифра по цифра
+  const ROLL_SEL = '.q .big, .res b, [data-roll]';
+  function rollSnap() { return { h: location.hash, v: [...$main.querySelectorAll(ROLL_SEL)].map(e => e.textContent) }; }
+  function rollApply(p) {
+    if (!p || p.h !== location.hash) return;
+    [...$main.querySelectorAll(ROLL_SEL)].forEach((el, i) => { const o = p.v[i]; if (o != null && o !== el.textContent && /\d/.test(el.textContent)) rollTo(el, o, el.textContent); });
+  }
+  function rollTo(el, from, to) {
+    const f = from.length >= to.length ? from.slice(from.length - to.length) : from.padStart(to.length, ' ');
+    const wrap = document.createElement('span'); wrap.className = 'roll'; wrap.setAttribute('aria-label', to);
+    const cols = [];
+    [...to].forEach((ch, i) => {
+      if (!/\d/.test(ch)) { const t = document.createElement('span'); t.textContent = ch; wrap.appendChild(t); return; }
+      const od = /\d/.test(f[i]) ? +f[i] : 0;
+      const c = document.createElement('span'); c.className = 'col';
+      c.innerHTML = '<i>0</i><i>1</i><i>2</i><i>3</i><i>4</i><i>5</i><i>6</i><i>7</i><i>8</i><i>9</i>';
+      c.style.transform = `translateY(${-od * 1.15}em)`;
+      wrap.appendChild(c); cols.push([c, +ch, od]);
+    });
+    el.textContent = ''; el.appendChild(wrap);
+    let k = 0;
+    requestAnimationFrame(() => requestAnimationFrame(() => cols.forEach(([c, d, od]) => { if (d !== od) { c.style.transitionDelay = (k++ * 70) + 'ms'; } c.style.transform = `translateY(${-d * 1.15}em)`; })));
+    setTimeout(() => { if (wrap.isConnected) el.textContent = to; }, 750 + k * 70 + cols.length * 70);
+  }
+
+  // Дръпни надолу за обновяване: пръстът минава целия път, списъкът – само 35%
+  (function pullToRefresh() {
+    const ind = document.createElement('div'); ind.className = 'ptr';
+    ind.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="#1553c7" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M20 12a8 8 0 1 1-2.34-5.66"/><path d="M20 4v5h-5"/></svg>';
+    root.appendChild(ind);
+    let y0 = null, dy = 0, working = false;
+    const reset = () => {
+      $main.classList.add('ptr-back'); ind.classList.add('back');
+      $main.style.transform = ''; ind.style.opacity = 0; ind.style.transform = '';
+      setTimeout(() => { $main.classList.remove('ptr-back'); ind.classList.remove('back'); }, 470);
+    };
+    $main.addEventListener('touchstart', e => {
+      y0 = working || dragging || $main.scrollTop > 0 || e.touches.length !== 1 || e.target.closest('.padw, textarea, input, select') ? null : e.touches[0].clientY; dy = 0;
+    }, { passive: true });
+    $main.addEventListener('touchmove', e => {
+      if (y0 == null || dragging) return;
+      dy = e.touches[0].clientY - y0;
+      if (dy <= 0 || $main.scrollTop > 0) { if (dy < -4) y0 = null; $main.style.transform = ''; ind.style.opacity = 0; return; }
+      if (e.cancelable) e.preventDefault();
+      const pull = dy * 0.35, k = Math.min(1, pull / 64);
+      $main.style.transform = `translateY(${pull}px)`;
+      ind.style.opacity = k; ind.style.transform = `translateY(${pull - 24}px) rotate(${pull * 5}deg) scale(${0.6 + 0.4 * k})`;
+      if (pull >= 64 && !ind.dataset.armed) { ind.dataset.armed = 1; haptic(10); } else if (pull < 64) delete ind.dataset.armed;
+    }, { passive: false });
+    $main.addEventListener('touchend', async () => {
+      if (y0 == null) return; y0 = null; delete ind.dataset.armed;
+      if (dy * 0.35 < 64) { reset(); return; }
+      working = true; $main.classList.add('ptr-back'); ind.classList.add('back', 'spin');
+      $main.style.transform = 'translateY(58px)'; ind.style.opacity = 1; ind.style.transform = 'translateY(34px)';
+      try {
+        D.buildings = null; D.all = null; D.b = {}; D.m = {}; D.chair = {}; D.sec = {}; D.det = {}; D.fees = {};
+        await render(true); success('Обновено');
+      } finally { working = false; ind.classList.remove('spin'); reset(); }
+    });
+  })();
+
+  // Задръж и плъзни за подредба на входовете: редът се повдига с 5%, другите се отместват
+  (function dragReorder() {
+    let timer = null, start = null;
+    $main.addEventListener('pointerdown', e => {
+      const it = e.target.closest('#k-bl .item');
+      if (!it || SS.get('q', '') || (e.button && e.button > 0)) return;
+      start = { x: e.clientX, y: e.clientY, it, id: e.pointerId };
+      clearTimeout(timer); timer = setTimeout(lift, 380);
+    });
+    $main.addEventListener('pointermove', e => {
+      if (!start) return;
+      if (!dragging) { if (Math.hypot(e.clientX - start.x, e.clientY - start.y) > 8) { clearTimeout(timer); start = null; } return; }
+      e.preventDefault(); move(e.clientY);
+    });
+    const end = () => { clearTimeout(timer); if (dragging) drop(); start = null; };
+    $main.addEventListener('pointerup', end);
+    $main.addEventListener('pointercancel', end);
+    $main.addEventListener('touchmove', e => { if (dragging && e.cancelable) e.preventDefault(); }, { passive: false });
+    $main.addEventListener('contextmenu', e => { if (dragging || start) e.preventDefault(); });
+    function lift() {
+      if (!start) return;
+      const list = [...$main.querySelectorAll('#k-bl .item')], i = list.indexOf(start.it);
+      if (i < 0 || list.length < 2) return;
+      const h = list[1].getBoundingClientRect().top - list[0].getBoundingClientRect().top;
+      dragging = { list, i, to: i, y0: start.y, h, it: start.it };
+      try { start.it.setPointerCapture(start.id); } catch (e) {}
+      list.forEach(x => { if (x !== start.it) x.classList.add('shift'); });
+      start.it.classList.add('lift'); start.it.style.transition = 'transform .2s cubic-bezier(.34,1.56,.64,1), box-shadow .2s'; start.it.style.transform = 'scale(1.05)';
+      setTimeout(() => { if (dragging) dragging.it.style.transition = 'box-shadow .2s'; }, 200);
+      haptic(14);
+    }
+    function move(y) {
+      const d = dragging, dy = y - d.y0;
+      d.it.style.transform = `translateY(${dy}px) scale(1.05)`;
+      const to = Math.max(0, Math.min(d.list.length - 1, d.i + Math.round(dy / d.h)));
+      if (to !== d.to) { d.to = to; haptic(5); }
+      d.list.forEach((x, k) => {
+        if (x === d.it) return;
+        let sft = 0;
+        if (d.i < to && k > d.i && k <= to) sft = -d.h;
+        if (d.i > to && k < d.i && k >= to) sft = d.h;
+        x.style.transform = sft ? `translateY(${sft}px)` : '';
+      });
+    }
+    function drop() {
+      const d = dragging; dragging = null;
+      suppressClick = true; setTimeout(() => { suppressClick = false; }, 450);
+      d.it.style.transition = 'transform .3s cubic-bezier(.16,1,.3,1), box-shadow .3s';
+      d.it.style.transform = `translateY(${(d.to - d.i) * d.h}px)`; d.it.classList.remove('lift');
+      const ids = d.list.map(x => +x.dataset.id); const [moved] = ids.splice(d.i, 1); ids.splice(d.to, 0, moved);
+      if (d.to !== d.i) { LS.set('border', ids); toast('Подредбата е запазена'); }
+      setTimeout(() => {
+        const l = root.querySelector('#k-bl');
+        if (l && D.buildings) l.innerHTML = bList(D.buildings.filter(b => !b.status || b.status === 'Активна'), '');
+      }, 310);
+    }
+  })();
+
+  /* ---------- 🚀 Обновяване: проверява за нова версия и се обновява само ---------- */
+  const UPD_REPO = 'capitalinvest70-ux/ki-protokol';
+  async function myVer() {
+    try {
+      if (window.KIAndroid && window.KIAndroid.appVersion) { const v = JSON.parse(window.KIAndroid.appVersion()); return { name: v.name, build: +v.code }; }
+      if (window.KIDesktop && window.KIDesktop.appVersion) return await window.KIDesktop.appVersion();
+    } catch (e) {}
+    return null;
+  }
+  const canUpdate = () => !!(window.KIAndroid ? window.KIAndroid.update : window.KIDesktop && window.KIDesktop.update);
+  let updHooked = false;
+  async function checkUpdate(manual) {
+    const me = await myVer();
+    if (!me || !canUpdate()) { if (manual) toast('Обновяването работи в приложението за телефон и компютър', true); return; }
+    let rel;
+    try {
+      const r = await fetch(`https://api.github.com/repos/${UPD_REPO}/releases/latest`, { headers: { Accept: 'application/vnd.github+json' }, cache: 'no-store' });
+      if (!r.ok) throw new Error(r.status === 404 ? 'Не виждам новите версии – хранилището ki-protokol в GitHub трябва да е публично' : 'GitHub отговори ' + r.status);
+      rel = await r.json();
+    } catch (e) { if (manual) toast(e.message || 'Няма връзка с интернет', true); return; }
+    LS.set('updAt', Date.now());
+    const b = +((String(rel.tag_name || '').match(/build(\d+)/) || [])[1] || 0);
+    const asset = (rel.assets || []).find(a => window.KIAndroid ? /\.apk$/i.test(a.name) : /\.exe$/i.test(a.name));
+    if (!asset || b <= me.build) { if (manual) success(`Имате последната версия · ${me.name}`); return; }
+    if (!manual && LS.get('updSkip', 0) === b) return;
+    updSheet(rel, asset, me, b);
+  }
+  const relNotes = body => String(body || '').split('\n').map(x => x.trim())
+    .filter(x => x && !/^(Co-Authored-By|Claude-Session|📱|💻|🤖)/i.test(x)).map(x => x.replace(/^v[\d.]+:\s*/, '')).slice(0, 8);
+  function updSheet(rel, asset, me, b) {
+    if (window.KIDesktop && window.KIDesktop.onUpdate && !updHooked) { updHooked = true; window.KIDesktop.onUpdate((p, msg) => window.KIM_updP && window.KIM_updP(p, msg)); }
+    const ver = (String(rel.tag_name || '').match(/v([\d.]+)/) || [])[1] || rel.name || '';
+    const notes = relNotes(rel.body);
+    const m = sheet(`<div style="text-align:center"><div style="font-size:3.2em;line-height:1">🚀</div>
+        <h2 style="justify-content:center;margin:8px 0 2px">Нова версия ${esc(ver)}</h2>
+        <div class="mut">Сега имате ${esc(me.name)} · ${(asset.size / 1048576).toFixed(1)} MB</div></div>
+      ${notes.length ? `<div class="card" style="margin-top:12px"><h3 style="margin-top:0">Какво ново</h3>${notes.map(x => `<div class="iss">• ${esc(x)}</div>`).join('')}</div>` : ''}
+      <div class="updp" hidden><div class="bar"><i style="width:0%"></i></div><div class="mut updt" style="text-align:center;margin-top:8px"></div></div>
+      <button class="btn big ok" data-u="go">⬇️ Обнови сега</button>
+      <div class="grid2"><button class="btn lite" data-u="later">По-късно</button><button class="btn out" data-u="skip">Пропусни тази</button></div>`);
+    const box = m.querySelector('.updp'), bar = box.querySelector('i'), txt = box.querySelector('.updt'), goB = m.querySelector('[data-u=go]');
+    window.KIM_updP = (p, msg) => {
+      box.hidden = false;
+      if (p < 0) { txt.textContent = msg || 'Свалянето спря'; txt.style.color = 'var(--bad)'; goB.disabled = false; goB.textContent = '↻ Опитай пак'; return; }
+      txt.style.color = ''; bar.style.width = p + '%';
+      txt.textContent = p >= 100 ? (window.KIAndroid ? 'Готово – натиснете „Инсталиране“' : 'Инсталирам… приложението ще се отвори само') : `Свалям… ${p}%`;
+      if (p >= 100) haptic(14);
+    };
+    m.addEventListener('click', async e => {
+      const u = e.target.closest('[data-u]'); if (!u) return;
+      if (u.dataset.u === 'later') { m.remove(); return; }
+      if (u.dataset.u === 'skip') { LS.set('updSkip', b); m.remove(); return; }
+      goB.disabled = true; goB.textContent = 'Свалям…'; window.KIM_updP(0);
+      const r = window.KIAndroid ? window.KIAndroid.update(asset.browser_download_url) : await window.KIDesktop.update(asset.browser_download_url, asset.name);
+      if (r === 'PERM') {
+        goB.disabled = false; goB.textContent = '↻ Разреших – продължи';
+        txt.textContent = 'Разрешете „Инсталиране на неизвестни приложения“ за Протоколи КИ и се върнете тук.';
+      } else if (/^ERR/.test(r || '')) window.KIM_updP(-1, String(r).replace(/^ERR\s*/, ''));
+    });
+  }
+  if (canUpdate()) {
+    const autoCheck = () => { if (D.user && !document.hidden && Date.now() - LS.get('updAt', 0) > 3600e3 && !root.querySelector('.menu')) checkUpdate(false); };
+    setTimeout(autoCheck, 5000); setInterval(autoCheck, 20 * 60e3);
+    document.addEventListener('visibilitychange', autoCheck);
   }
 
   /* ---------- 🎙️ Запис на събранието от микрофона (приложението за Android) ---------- */
@@ -597,7 +895,7 @@
         const res = window.KIAndroid.recStart(recFileName());
         if (res === 'PERM') {
           toast('Разрешете достъп до микрофона');
-          window.KIM_recPerm = ok => { window.KIM_recPerm = null; if (ok) { m.remove(); recSheet(); const b = root.querySelector('.menu [data-x=start]'); if (b) b.click(); } else toast('Без разрешение за микрофона не може да се записва', true); };
+          window.KIM_recPerm = ok => { window.KIM_recPerm = null; if (ok) { m.remove(); recSheet(); const b = root.querySelector('.menu:not(.out) [data-x=start]'); if (b) b.click(); } else toast('Без разрешение за микрофона не може да се записва', true); };
           return;
         }
         if (/^ERR/.test(res)) { toast(res.replace(/^ERR\s*/, ''), true); return; }
@@ -706,12 +1004,15 @@
     html(`${q ? '' : heroHtml(`<div>${wordmark('ОБЩИ СЪБРАНИЯ И ПРОТОКОЛИ')}<div class="mut" style="margin-top:8px;font-weight:600">${list.length} активни входа</div></div>`)}
       <div class="search"><input id="k-q" type="search" placeholder="🔎 Търси вход или адрес…" value="${esc(q)}"></div>
       ${rec.length && !q ? `<h3>Последно отваряни</h3>${rec.map(bItem).join('')}<h3>Всички входове (${list.length})</h3>` : ''}
+      ${q ? '' : '<div class="hint">↕️ Задръж вход и го плъзни, за да го преместиш</div>'}
       <div id="k-bl">${bList(list, q)}</div>`, keep);
   }
-  const bItem = b => `<button class="item" data-go="#/b/${b.id}"><div class="grow"><div class="ttl">${esc(b.name)}</div><div class="mut">${esc(b.address || '')}</div></div><span class="arr">›</span></button>`;
+  const bItem = b => `<button class="item" data-id="${b.id}" data-go="#/b/${b.id}"><div class="grow"><div class="ttl">${esc(b.name)}</div><div class="mut">${esc(b.address || '')}</div></div><span class="arr">›</span></button>`;
   function bList(list, q) {
     const nq = norm(q);
-    const f = nq ? list.filter(b => nq.split(' ').every(w => norm(b.name + ' ' + b.address).includes(w))) : list;
+    let f = nq ? list.filter(b => nq.split(' ').every(w => norm(b.name + ' ' + b.address).includes(w))) : list;
+    const ord = nq ? [] : LS.get('border', []);
+    if (ord.length) { const pos = id => { const k = ord.indexOf(id); return k < 0 ? 1e6 : k; }; f = f.map((b, i) => [b, i]).sort((a, b) => (pos(a[0].id) - pos(b[0].id)) || (a[1] - b[1])).map(x => x[0]); }
     return f.length ? f.map(bItem).join('') : '<div class="empty">Няма такъв вход</div>';
   }
 
@@ -1018,8 +1319,24 @@
     const m = document.createElement('div'); m.className = 'menu';
     m.innerHTML = `<div class="sheet">${inner}</div>`;
     m.addEventListener('click', e => { if (e.target === m) m.remove(); });
+    const realRemove = m.remove.bind(m);
+    m.remove = () => { if (m.classList.contains('out')) return; m.classList.add('out'); setTimeout(realRemove, 260); };
+    const sh = m.querySelector('.sheet'); let sy = null, sd = 0;
+    sh.addEventListener('touchstart', e => { sy = sh.scrollTop > 0 || e.target.closest('textarea, input, select, .padw') ? null : e.touches[0].clientY; sd = 0; }, { passive: true });
+    sh.addEventListener('touchmove', e => {
+      if (sy == null) return; sd = e.touches[0].clientY - sy;
+      if (sd <= 0) { sh.style.transform = ''; return; }
+      if (e.cancelable) e.preventDefault();
+      sh.classList.add('drag'); sh.style.transform = `translateY(${sd}px)`;
+    }, { passive: false });
+    sh.addEventListener('touchend', () => {
+      if (sy == null) return; sy = null; sh.classList.remove('drag');
+      if (sd > 110) { m.remove(); return; }
+      sh.style.transition = 'transform .45s cubic-bezier(.34,1.56,.64,1)'; sh.style.transform = '';
+      setTimeout(() => { sh.style.transition = ''; }, 460);
+    });
     root.appendChild(m);
-    decorateAi(m.querySelector('.sheet'));
+    decorateAi(sh);
     return m;
   }
   const stamp = () => { const d = new Date(); return `${bgDate(isoOf(d))} ${nowHm()}`; };
@@ -1771,16 +2088,20 @@
   }
 
   /* ---------- Меню ---------- */
-  function menu() {
+  let menu = function () {
     const mid = curMid();
     sheet(`<div class="row" style="margin-bottom:6px"><div class="grow"><div class="ttl">${esc((D.user && (D.user.display_name || D.user.username)) || 'Протоколи КИ')}</div><div class="mut">Протоколи КИ</div></div>
       <button class="btn lite sm" data-act="closeMenu">✕</button></div>
       <label class="l">Големина на буквите</label><div class="grid2"><button class="btn lite" data-act="fs" data-v="-1" style="margin:0">А−</button><button class="btn lite" data-act="fs" data-v="1" style="margin:0">А+</button></div>
       <button class="btn lite" data-act="refresh">🔄 Обнови данните</button>
+      ${window.KIAndroid || window.KIDesktop ? '<button class="btn lite" data-act="upd">🚀 Провери за нова версия</button><div class="mut k-ver" style="text-align:center;margin-top:6px"></div>' : ''}
+      ${LS.get('border', []).length ? '<button class="btn out" data-act="ordReset">↕️ Входовете по подразбиране</button>' : ''}
       <button class="btn out" data-act="full" ${mid ? `data-m="${mid}"` : ''}>🖥️ Пълна версия на програмата</button>
       ${D.user ? '<button class="btn out" data-act="logout" style="color:var(--bad)">Изход</button>' : ''}`);
   }
 
+  const _menu = menu;
+  menu = function () { _menu(); myVer().then(v => { const e = root.querySelector('.menu:not(.out) .k-ver'); if (e && v) e.textContent = `Версия ${v.name} · build ${v.build}`; }); };
   const withMid = async (msg, fn, after) => { const mid = curMid(); const r = await run(msg, () => fn(mid)); if (after !== false) { delete D.det[mid]; render(true); } return r; };
 
   /* ---------- Действия ---------- */
@@ -1788,6 +2109,8 @@
     login: () => doLogin(),
     menu: () => menu(),
     ai: el => aiRewrite(el),
+    upd: el => { el.closest('.menu').remove(); return run('Проверявам за нова версия…', () => checkUpdate(true)); },
+    ordReset: el => { LS.del('border'); el.closest('.menu').remove(); render(true); toast('Входовете са по подразбиране'); },
     rec: () => recSheet(),
     closeMenu: el => el.closest('.menu').remove(),
     reload: () => render(),
@@ -2017,6 +2340,7 @@
       }
       const ok = await run('Записвам…', async () => { await patch(`/api/agenda/${aid}/completed`, { is_completed: v }); await loadMeeting(mid, true); return true; });
       if (!ok) return;
+      if (v) success(`Точка ${ag[i] ? ag[i].item_no : ''} е приключена`);
       if (v && ag[i + 1]) go(`#/m/${mid}/p/${ag[i + 1].id}`); else if (v) go(`#/m/${mid}/end`); else render(true);
     },
     quorum: async el => { const mid = curMid(); await run('Записвам…', async () => { await patch(`/api/meetings/${mid}/quorum`, { quorum_mode: el.dataset.v }); await loadMeeting(mid, true); }); render(true); },
