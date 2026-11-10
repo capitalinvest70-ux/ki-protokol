@@ -15,6 +15,7 @@ import android.provider.MediaStore;
 import androidx.core.content.FileProvider;
 import java.io.File;
 import java.io.FileOutputStream;
+import java.io.FileInputStream;
 import android.os.Build;
 import android.util.Base64;
 import android.net.Uri;
@@ -332,6 +333,85 @@ public class MainActivity extends BridgeActivity {
         }).start();
     }
 
+    /* ---------- 🎙️ Запис на събранието ---------- */
+    private String recStart(String name) {
+        if (Build.VERSION.SDK_INT >= 23 && checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
+            final String[] perms = Build.VERSION.SDK_INT >= 33
+                    ? new String[]{Manifest.permission.RECORD_AUDIO, "android.permission.POST_NOTIFICATIONS"}
+                    : new String[]{Manifest.permission.RECORD_AUDIO};
+            runOnUiThread(() -> requestPermissions(perms, 8));
+            return "PERM";
+        }
+        try {
+            File dir = new File(getExternalFilesDir(Environment.DIRECTORY_MUSIC), "rec");
+            if (!dir.exists()) dir.mkdirs();
+            String safe = name.replaceAll("[\\\\/:*?\"<>|]", "_");
+            RecService.begin(this, new File(dir, safe), safe);
+            Intent i = new Intent(this, RecService.class);
+            try {
+                if (Build.VERSION.SDK_INT >= 26) startForegroundService(i); else startService(i);
+            } catch (Exception ignored) { }
+            return "OK";
+        } catch (Exception e) {
+            return "ERR " + (e.getMessage() == null ? e.toString() : e.getMessage());
+        }
+    }
+
+    private String recState() {
+        try {
+            JSONObject o = new JSONObject();
+            o.put("state", RecService.state());
+            o.put("ms", RecService.elapsed());
+            o.put("name", RecService.name == null ? "" : RecService.name);
+            return o.toString();
+        } catch (Exception e) {
+            return "{\"state\":\"idle\",\"ms\":0}";
+        }
+    }
+
+    private String recStop() {
+        File f = RecService.end();
+        long ms = RecService.accMs;
+        try { stopService(new Intent(this, RecService.class)); } catch (Exception ignored) { }
+        if (f == null || !f.exists()) return "ERR Няма запис";
+        try {
+            String uri;
+            if (Build.VERSION.SDK_INT >= 29) {
+                ContentValues v = new ContentValues();
+                v.put(MediaStore.MediaColumns.DISPLAY_NAME, f.getName());
+                v.put(MediaStore.MediaColumns.MIME_TYPE, "audio/mp4");
+                v.put(MediaStore.MediaColumns.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS + "/Протоколи/Записи");
+                Uri u = getContentResolver().insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, v);
+                if (u == null) throw new Exception("няма достъп до Изтегляния");
+                try (InputStream in = new FileInputStream(f); OutputStream os = getContentResolver().openOutputStream(u)) {
+                    byte[] buf = new byte[65536];
+                    int n;
+                    while ((n = in.read(buf)) > 0) os.write(buf, 0, n);
+                }
+                f.delete();
+                uri = u.toString();
+            } else {
+                uri = FileProvider.getUriForFile(this, getPackageName() + ".fileprovider", f).toString();
+            }
+            JSONObject o = new JSONObject();
+            o.put("uri", uri);
+            o.put("ms", ms);
+            o.put("name", f.getName());
+            return o.toString();
+        } catch (Exception e) {
+            return "ERR Записът е спрян, но не можах да го преместя: " + e.getMessage() + ". Файлът е в " + f.getAbsolutePath();
+        }
+    }
+
+    @Override
+    public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+        if (requestCode == 8) {
+            boolean ok = Build.VERSION.SDK_INT < 23 || checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED;
+            runOnUiThread(() -> getBridge().getWebView().evaluateJavascript("window.KIM_recPerm&&window.KIM_recPerm(" + ok + ")", null));
+        }
+    }
+
     @Override
     public void onDestroy() {
         btClose();
@@ -381,6 +461,21 @@ public class MainActivity extends BridgeActivity {
             if (name == null || !name.matches("[a-z0-9.-]+\\.js")) return "";
             return MainActivity.this.readAsset("public/" + name);
         }
+
+        @JavascriptInterface
+        public String recStart(String name) { return MainActivity.this.recStart(name); }
+
+        @JavascriptInterface
+        public String recState() { return MainActivity.this.recState(); }
+
+        @JavascriptInterface
+        public String recPause() { RecService.pause(); return MainActivity.this.recState(); }
+
+        @JavascriptInterface
+        public String recResume() { RecService.resume(); return MainActivity.this.recState(); }
+
+        @JavascriptInterface
+        public String recStop() { return MainActivity.this.recStop(); }
 
         @JavascriptInterface
         public String btList() {

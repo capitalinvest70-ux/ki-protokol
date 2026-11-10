@@ -8,7 +8,7 @@ const net = require('net');
 
 const SITE = 'https://protocol-app-production-cc1d.up.railway.app/';
 // html2canvas (за печат) + модул за печат + мобилният изглед (същият като на телефона) + скин за пълната версия
-const SKIN = ['html2canvas.min.js', 'print.js', 'mobile.js', 'skin.js']
+const SKIN = ['html2canvas.min.js', 'print.js', 'brand.js', 'mobile.js', 'skin.js']
   .map(f => fs.readFileSync(path.join(__dirname, f), 'utf8')).join('\n;\n');
 const DOWNLOAD_RE = /(-docx|download=word)/;
 

@@ -252,6 +252,83 @@
   #kim .steps span { flex:1; height:6px; border-radius:4px; background:#d6dfee; }
   #kim .steps span.on { background:var(--ok); }
   `;
+  const brandCss = `  /* ===== Вид „Капитал Инвест“ – като рекламата ===== */
+  #kim { --navy:#0b2d6b; --navy2:#1553c7; --blue:#1a6fe0; --sky:#e8f1ff; --gold:#e9a922; --green:#2e9e45; --purple:#7046c2;
+    --bg:#f3f7fd; --ink:#0c1a36; --mut:#5a6b88; --line:#d8e3f3; --ok:#2e9e45; --okbg:#e6f6ea;
+    font-family:"Montserrat","Segoe UI",Roboto,Arial,sans-serif;
+    background:linear-gradient(180deg,#e6f0fe 0%,#f5f9ff 220px,#f3f7fd 100%); }
+  #kim .top { background:linear-gradient(100deg,#09265c 0%,#0f3a88 55%,#1757cc 100%); border-bottom:3px solid #3b8bff; }
+  #kim .top .t1 { font-weight:800; letter-spacing:.01em; }
+  #kim .top .t2 { color:#a8ccff; opacity:1; }
+  #kim .top .lgw { height:36px; width:auto; margin:0 4px 0 6px; flex:none; }
+  #kim .main { background:transparent; }
+  #kim .card { border-radius:18px; border:1px solid #e2eaf6; box-shadow:0 6px 18px rgba(13,45,107,.07), 0 1px 2px rgba(13,45,107,.05); }
+  #kim h2 { color:var(--navy); font-weight:800; }
+  #kim h3 { color:var(--navy2); letter-spacing:.09em; font-weight:700; }
+  #kim label.l { color:#3d5079; }
+  #kim input, #kim select, #kim textarea { border-color:#d3e0f3; border-radius:14px; }
+  #kim .btn { background:linear-gradient(135deg,#1f78ea,#0c45b3); box-shadow:0 6px 14px rgba(21,83,199,.25); border-radius:16px; letter-spacing:.01em; }
+  #kim .btn.ok { background:linear-gradient(135deg,#43bb59,#21863a); box-shadow:0 6px 14px rgba(46,158,69,.25); }
+  #kim .btn.gold { background:linear-gradient(135deg,#f6c64a,#e19b12); color:#2a1c00; box-shadow:0 6px 14px rgba(225,155,18,.25); }
+  #kim .btn.bad { background:linear-gradient(135deg,#ea5249,#b8231b); box-shadow:0 6px 14px rgba(198,40,40,.25); }
+  #kim .btn.lite { background:#e8f1ff; color:var(--navy); box-shadow:none; }
+  #kim .btn.out { background:#fff; color:var(--navy); border:2px solid #d3e1f5; box-shadow:none; }
+  #kim .item { border:1px solid #e2eaf6; border-left:6px solid var(--blue); box-shadow:0 4px 14px rgba(13,45,107,.06); border-radius:16px; }
+  #kim .item .ttl { color:var(--navy); }
+  #kim .search input { border-radius:30px; padding-left:18px; box-shadow:0 4px 14px rgba(13,45,107,.06); }
+  #kim .seg { background:#e8f1ff; }
+  #kim .seg button.on { background:linear-gradient(135deg,#1f78ea,#0c45b3); }
+  #kim .num { background:linear-gradient(135deg,#1f78ea,#0c45b3); }
+  #kim .num.ok, #kim .unit.on .tick { background:linear-gradient(135deg,#43bb59,#21863a); border-color:#2e9e45; }
+  #kim .chips button.on { background:var(--navy2); border-color:var(--navy2); }
+  #kim .tabs { background:#fff; border-top:0; box-shadow:0 -6px 18px rgba(13,45,107,.08); }
+  #kim .tabs button { border-top:0; color:#4d5f80; }
+  #kim .tabs button b { width:42px; height:42px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:1.25em; background:#eef3fb; margin-bottom:2px; transition:transform .15s; }
+  #kim .tabs button.on { background:none; color:var(--navy); }
+  #kim .tabs button.on b { transform:scale(1.08); box-shadow:0 4px 10px rgba(13,45,107,.25); }
+  #kim .tabs button:nth-child(1).on b { background:linear-gradient(135deg,#2f86ef,#1253c4); }
+  #kim .tabs button:nth-child(2).on b { background:linear-gradient(135deg,#5cbf4f,#2a8a35); }
+  #kim .tabs button:nth-child(3).on b { background:linear-gradient(135deg,#f3c34a,#d99212); }
+  #kim .tabs button:nth-child(4).on b { background:linear-gradient(135deg,#8b5ad8,#5b31a8); }
+  /* лого, надписи, снимка */
+  #kim .wm { font-weight:800; font-size:1.45em; letter-spacing:.01em; color:var(--navy); line-height:1.05; white-space:nowrap; }
+  #kim .wm span { color:var(--blue); }
+  #kim .wsub { display:inline-block; margin-top:6px; padding-top:5px; border-top:2px solid var(--blue); font-size:.56em; letter-spacing:.2em; color:#24395f; font-weight:600; }
+  #kim .script { font-family:"Caveat","Segoe Script",cursive; color:var(--blue); font-size:1.55em; line-height:1; font-weight:600; }
+  #kim .hero { position:relative; overflow:hidden; border-radius:22px; margin-bottom:14px; background:#fff var(--hero) right center / cover no-repeat;
+    box-shadow:0 8px 24px rgba(13,45,107,.12); border:1px solid #e2eaf6; }
+  #kim .hero::before { content:''; position:absolute; inset:0; background:linear-gradient(90deg,rgba(255,255,255,.98) 0%,rgba(255,255,255,.95) 55%,rgba(255,255,255,.4) 82%,rgba(255,255,255,0) 100%); }
+  #kim .hero .in { position:relative; display:flex; align-items:center; gap:12px; padding:16px; }
+  #kim .hero .lg { height:72px; width:auto; flex:none; }
+  #kim .hero .band { position:relative; background:linear-gradient(100deg,#09265c,#1553c7); color:#fff; padding:10px 16px; display:flex; flex-wrap:wrap; gap:4px 14px; font-size:.78em; font-weight:600; }
+  #kim .ticks span { display:inline-flex; align-items:center; gap:6px; }
+  #kim .ticks span::before { content:'✓'; width:20px; height:20px; border-radius:50%; background:#3b8bff; color:#fff; display:inline-flex; align-items:center; justify-content:center; font-size:.8em; font-weight:800; }
+  #kim .icons4 { display:grid; grid-template-columns:repeat(4,1fr); gap:6px; text-align:center; margin:16px 0 6px; }
+  #kim .icons4 i { width:56px; height:56px; margin:0 auto 6px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:1.6em; font-style:normal; box-shadow:0 6px 14px rgba(13,45,107,.18); }
+  #kim .icons4 div { font-size:.62em; font-weight:800; color:var(--navy); letter-spacing:.02em; text-transform:uppercase; line-height:1.15; }
+  #kim .i1 { background:linear-gradient(135deg,#2f86ef,#1253c4); } #kim .i2 { background:linear-gradient(135deg,#5cbf4f,#2a8a35); }
+  #kim .i3 { background:linear-gradient(135deg,#f3c34a,#d99212); } #kim .i4 { background:linear-gradient(135deg,#8b5ad8,#5b31a8); }
+  #kim .login { margin-top:2vh; }
+  #kim .login .hero .in { flex-direction:column; align-items:flex-start; padding:20px 18px 16px; }
+  #kim .login .hero .lg { height:96px; }
+  /* AI редакция */
+  #kim .aibar { display:grid; grid-template-columns:1fr 1.25fr 1fr; gap:6px; margin-top:6px; }
+  #kim .aibar button { min-height:44px; padding:4px 6px; border-radius:14px; background:#f2ecfd; color:#5a33a8; font-weight:700; font-size:.72em; line-height:1.15; border:1px solid #e1d5fa; text-align:center; }
+  #kim .aibar button[disabled] { opacity:.4; }
+  #kim .aibar button:active { background:#e4d8fb; }
+  /* Запис */
+  #kim .top .recb { display:flex; align-items:center; gap:6px; height:42px; padding:0 12px; border-radius:22px; background:rgba(255,255,255,.14); color:#fff; font-weight:700; font-size:.85em; flex:none; font-variant-numeric:tabular-nums; }
+  #kim .top .recb.on { background:#e2453c; animation:kimpulse 1.4s infinite; }
+  #kim .top .recb.pz { background:#d99212; }
+  @keyframes kimpulse { 50% { box-shadow:0 0 0 6px rgba(226,69,60,.3); } }
+  #kim .recbig { width:124px; height:124px; border-radius:50%; margin:14px auto 6px; display:flex; align-items:center; justify-content:center; font-size:3em; color:#fff;
+    background:linear-gradient(135deg,#f0625a,#c62828); box-shadow:0 10px 26px rgba(198,40,40,.35); }
+  #kim .recbig:active { transform:scale(.96); }
+  #kim .rectime { text-align:center; font-size:2.4em; font-weight:800; color:var(--navy); font-variant-numeric:tabular-nums; margin-top:6px; }
+  #kim .recrow { display:flex; align-items:center; gap:8px; padding:10px 0; border-top:1px solid var(--line); }
+  #kim .recrow .btn { margin:0; }
+  #kim.desk .hero .lg { height:84px; }
+  `;
   const deskCss = `
   #kim.desk .top { padding-left:max(8px, calc(50% - 500px)); padding-right:max(8px, calc(50% - 500px)); }
   #kim.desk .main { padding-left:max(12px, calc(50% - 490px)); padding-right:max(12px, calc(50% - 490px)); }
@@ -262,10 +339,17 @@
   #kim.desk .toast.hide { transform:translate(-50%, -20px); }
   #kim.desk .padw canvas { height:240px; }
   #kim.desk .item:hover, #kim.desk .unit:hover { box-shadow:0 2px 10px rgba(11,42,91,.22); }`;
-  const st = document.createElement('style'); st.id = 'kim-css'; st.textContent = css + deskCss; document.head.appendChild(st);
+  const st = document.createElement('style'); st.id = 'kim-css'; st.textContent = css + brandCss + deskCss; document.head.appendChild(st);
   document.documentElement.classList.add('kim-on');
+  if (!document.getElementById('kim-fonts')) {
+    const fl = document.createElement('link'); fl.id = 'kim-fonts'; fl.rel = 'stylesheet';
+    fl.href = 'https://fonts.googleapis.com/css2?family=Montserrat:wght@500;600;700;800&family=Caveat:wght@600&display=swap';
+    document.head.appendChild(fl);
+  }
+  const BR = window.KI_BRAND || {};
 
   const root = document.createElement('div'); root.id = 'kim';
+  if (BR.hero) root.style.setProperty('--hero', `url(${BR.hero})`);
   if (DESK) root.classList.add('desk');
   root.innerHTML = `<div class="top"></div><div class="main"></div><div class="tabs" hidden></div><div class="toast hide"></div>`;
   document.body.appendChild(root);
@@ -407,9 +491,9 @@
 
   /* ---------- Рамка: горна лента, табове, маршрути ---------- */
   function top(title, sub, back, extra) {
-    $top.innerHTML = `${back ? `<button class="ib" data-go="${esc(back)}" aria-label="Назад">←</button>` : '<span style="width:8px"></span>'}
+    $top.innerHTML = `${back ? `<button class="ib" data-go="${esc(back)}" aria-label="Назад">←</button>` : BR.logoW ? `<img class="lgw" src="${BR.logoW}" alt="">` : '<span style="width:8px"></span>'}
       <div class="tt"><div class="t1">${esc(title)}</div>${sub ? `<div class="t2">${esc(sub)}</div>` : ''}</div>
-      ${extra || ''}<button class="ib" data-act="menu" aria-label="Меню">⋮</button>`;
+      ${extra || ''}${recBtn()}<button class="ib" data-act="menu" aria-label="Меню">⋮</button>`;
   }
   function tabs(mid, cur) {
     if (!mid) { $tabs.hidden = true; $tabs.innerHTML = ''; return; }
@@ -418,7 +502,137 @@
     $tabs.hidden = false;
     $tabs.innerHTML = T.map(([k, i, l]) => `<button class="${cur === k ? 'on' : ''}" data-go="#/m/${mid}/${k}"><b>${i}</b>${l}</button>`).join('');
   }
-  const html = (h, keepScroll) => { const y = $main.scrollTop; $main.innerHTML = h; $main.scrollTop = keepScroll ? y : 0; };
+  const html = (h, keepScroll) => { const y = $main.scrollTop; $main.innerHTML = h; decorateAi($main); $main.scrollTop = keepScroll ? y : 0; };
+
+  /* ---------- ✨ Редакция на текста (същата като в пълната версия на програмата) ---------- */
+  const AI_MODES = [['edit', '✨ Редактирай'], ['professional', '🧾 Професионално'], ['short', '✂️ Кратко и ясно']];
+  function decorateAi(box) {
+    if (!box) return;
+    box.querySelectorAll('textarea').forEach(t => {
+      if (t.dataset.noai || (t.nextElementSibling && t.nextElementSibling.classList.contains('aibar'))) return;
+      const bar = document.createElement('div'); bar.className = 'aibar';
+      bar.innerHTML = AI_MODES.map(([m, l]) => `<button type="button" data-act="ai" data-mode="${m}" ${t.disabled ? 'disabled' : ''}>${l}</button>`).join('');
+      t.after(bar);
+    });
+  }
+  function aiContext(t) {
+    const pt = $main.querySelector('.card .ttl');
+    const ptT = pt && /\/p\//.test(location.hash) ? pt.textContent.trim() : '';
+    if (t.dataset.f === 'discussion') return 'Обсъждане по точка от дневния ред' + (ptT ? ': ' + ptT : '');
+    if (t.dataset.f === 'proposal') return 'Предложение за решение по точка от дневния ред' + (ptT ? ': ' + ptT : '');
+    let lab = t.previousElementSibling;
+    while (lab && lab.tagName !== 'LABEL') lab = lab.previousElementSibling;
+    const l = lab ? lab.textContent.replace(/\(.*?\)/g, '').trim() : 'Текст в протокол от общо събрание';
+    return l + ' – протокол от общо събрание на етажна собственост';
+  }
+  async function aiRewrite(el) {
+    const t = el.parentElement && el.parentElement.previousElementSibling;
+    if (!t || t.tagName !== 'TEXTAREA') return;
+    const old = t.value, text = old.trim();
+    if (!text) { toast('Първо напиши текст, после натисни бутона', true); return; }
+    const mode = el.dataset.mode;
+    const r = await run('Редактирам текста…', () => post('/api/ai/rewrite', { text, context: aiContext(t), mode }));
+    if (!r) return;
+    const out = String(r.text || '').trim();
+    if (!out) { toast('Не се получи текст – опитай пак', true); return; }
+    const title = mode === 'professional' ? 'Професионален вариант' : mode === 'short' ? 'Кратък и ясен вариант' : 'Редактиран текст';
+    const m = sheet(`<div class="row"><h2 class="grow" style="margin:0">✨ ${title}</h2><button class="btn lite sm" data-act="closeMenu">✕</button></div>
+      <div class="mut" style="margin-top:6px">Прегледай и поправи, ако трябва. Старият текст се сменя само с „Сложи този текст“.</div>
+      <textarea data-noai="1" class="k-air" style="min-height:220px;margin-top:10px">${esc(out)}</textarea>
+      <button class="btn big ok" data-x="use">✓ Сложи този текст</button>
+      <div class="grid2"><button class="btn lite" data-x="add">＋ Добави след стария</button><button class="btn out" data-x="no">Отказ</button></div>
+      <details style="margin-top:12px"><summary class="mut">Стар текст</summary><div class="mut" style="white-space:pre-wrap;margin-top:6px">${esc(old)}</div></details>`);
+    const put = v => { t.value = v; t.dispatchEvent(new Event('input', { bubbles: true })); t.dispatchEvent(new Event('change', { bubbles: true })); m.remove(); toast('Текстът е сменен ✓'); };
+    m.querySelector('[data-x=use]').onclick = () => put(m.querySelector('.k-air').value.trim());
+    m.querySelector('[data-x=add]').onclick = () => put(old.replace(/\s+$/, '') + '\n' + m.querySelector('.k-air').value.trim());
+    m.querySelector('[data-x=no]').onclick = () => m.remove();
+  }
+
+  /* ---------- 🎙️ Запис на събранието от микрофона (приложението за Android) ---------- */
+  const REC = !!(window.KIAndroid && window.KIAndroid.recStart);
+  const recSt = () => { try { return JSON.parse(window.KIAndroid.recState()); } catch (e) { return { state: 'idle', ms: 0 }; } };
+  const fmtMs = ms => { const t = Math.floor((ms || 0) / 1000), h = Math.floor(t / 3600); return (h ? h + ':' : '') + pad(Math.floor(t / 60) % 60) + ':' + pad(t % 60); };
+  function recBtn() {
+    if (!REC) return '';
+    const st = recSt();
+    if (st.state === 'idle' && !curMid()) return '';
+    return `<button class="recb ${st.state === 'rec' ? 'on' : st.state === 'paused' ? 'pz' : ''}" data-act="rec" aria-label="Запис">${st.state === 'rec' ? '● ' + fmtMs(st.ms) : st.state === 'paused' ? '⏸ ' + fmtMs(st.ms) : '🎙️'}</button>`;
+  }
+  if (REC) setInterval(() => {
+    const b = root.querySelector('.top .recb'), big = root.querySelector('.menu .rectime');
+    if (!b && !big) return;
+    const st = recSt();
+    if (b) { b.className = 'recb ' + (st.state === 'rec' ? 'on' : st.state === 'paused' ? 'pz' : ''); b.textContent = st.state === 'rec' ? '● ' + fmtMs(st.ms) : st.state === 'paused' ? '⏸ ' + fmtMs(st.ms) : '🎙️'; }
+    if (big) big.textContent = fmtMs(st.ms);
+  }, 1000);
+  const recFileName = () => {
+    const mid = curMid(), d = mid && D.m[mid];
+    const bn = d && d.building ? d.building.name : 'Събрание';
+    const no = d && d.meeting ? ' – събрание №' + d.meeting.meeting_no : '';
+    const t = new Date();
+    return `Запис ${bn}${no} – ${bgDate(isoOf(t))} ${pad(t.getHours())}-${pad(t.getMinutes())}.m4a`.replace(/[\\/:*?"<>|]/g, '_');
+  };
+  const refreshTop = () => { const b = root.querySelector('.top .recb'); if (b || REC) { const st = recSt(); if (b) b.outerHTML = recBtn(); else if (st.state !== 'idle') render(true); } };
+  function recSheet() {
+    const st = recSt();
+    const mid = st.state !== 'idle' ? LS.get('recMid', curMid()) : curMid();
+    const all = LS.get('recs', []);
+    const list = all.map((r, i) => ({ ...r, i })).filter(r => !mid || r.mid === mid).reverse();
+    const m = sheet(`<div class="row"><h2 class="grow" style="margin:0">🎙️ Запис на събранието</h2><button class="btn lite sm" data-act="closeMenu">✕</button></div>
+      <div class="rectime">${fmtMs(st.ms)}</div>
+      <div class="mut" style="text-align:center">${st.state === 'rec' ? '● Записва. Може да работиш в приложението, да заключиш екрана или да отвориш друго приложение.' : st.state === 'paused' ? '⏸ На пауза' : 'Записва от микрофона на телефона.'}</div>
+      ${st.state === 'idle' ? `<button class="recbig" data-x="start" aria-label="Започни запис">●</button>
+        <div style="text-align:center;font-weight:700;color:var(--navy)">Започни запис</div>
+        <div class="note">Кажете на присъстващите, че събранието се записва.</div>`
+        : `<div class="grid2" style="margin-top:12px">${st.state === 'rec' ? '<button class="btn gold big" data-x="pause">⏸ Пауза</button>' : '<button class="btn big" data-x="resume">▶ Продължи</button>'}
+           <button class="btn bad big" data-x="stop">■ Спри и запази</button></div>`}
+      ${list.length ? `<h3>Записи${mid ? ' на това събрание' : ''}</h3>${list.map(r => `<div class="recrow"><div class="grow"><div class="ttl" style="font-size:.85em">${esc(r.name)}</div><div class="mut">${fmtMs(r.ms)} · ${esc(r.at)}</div></div>
+        <button class="btn lite sm" data-x="play" data-i="${r.i}" aria-label="Пусни">▶</button><button class="btn lite sm" data-x="send" data-i="${r.i}" aria-label="Изпрати">📤</button></div>`).join('')}` : ''}
+      <div class="mut" style="margin-top:12px">Записите са в Изтегляния / Протоколи / Записи.</div>`);
+    const again = () => { m.remove(); recSheet(); refreshTop(); };
+    m.addEventListener('click', async e => {
+      const x = e.target.closest('[data-x]'); if (!x) return;
+      const k = x.dataset.x, r = all[+x.dataset.i];
+      if (k === 'start') {
+        const res = window.KIAndroid.recStart(recFileName());
+        if (res === 'PERM') {
+          toast('Разрешете достъп до микрофона');
+          window.KIM_recPerm = ok => { window.KIM_recPerm = null; if (ok) { m.remove(); recSheet(); const b = root.querySelector('.menu [data-x=start]'); if (b) b.click(); } else toast('Без разрешение за микрофона не може да се записва', true); };
+          return;
+        }
+        if (/^ERR/.test(res)) { toast(res.replace(/^ERR\s*/, ''), true); return; }
+        LS.set('recMid', curMid()); toast('● Записът започна'); again();
+      }
+      else if (k === 'pause') { window.KIAndroid.recPause(); again(); }
+      else if (k === 'resume') { window.KIAndroid.recResume(); again(); }
+      else if (k === 'stop') {
+        busy(true, 'Запазвам записа…');
+        await new Promise(res => setTimeout(res, 80));
+        let out;
+        try { out = window.KIAndroid.recStop(); } finally { busy(false); }
+        if (!out || /^ERR/.test(out)) { toast((out || 'Грешка').replace(/^ERR\s*/, ''), true); again(); return; }
+        const o = JSON.parse(out);
+        const recs = LS.get('recs', []);
+        recs.push({ mid: LS.get('recMid', curMid()), name: o.name, uri: o.uri, ms: o.ms, at: stamp() });
+        LS.set('recs', recs.slice(-60)); LS.del('recMid');
+        toast('✓ Записът е запазен в Изтегляния / Протоколи / Записи'); again();
+      }
+      else if (k === 'play' && r) N.openFile(r.uri, 'audio/mp4');
+      else if (k === 'send' && r) {
+        const s2 = sheet(`<h2>📤 Изпрати записа</h2><div class="mut">${esc(r.name)}</div>
+          <div class="grid2" style="margin-top:10px"><button class="btn lite" data-y="viber" style="color:#7360f2">💬 Viber</button><button class="btn lite" data-y="email">📧 Имейл</button></div>
+          <button class="btn out" data-y="share">📤 Друго…</button><button class="btn out" data-y="close">Готово</button>`);
+        s2.addEventListener('click', ev => {
+          const y = ev.target.closest('[data-y]'); if (!y) return;
+          const subj = r.name.replace(/\.m4a$/i, '');
+          if (y.dataset.y === 'viber') N.shareTo(r.uri, 'audio/mp4', 'viber', '', subj, subj);
+          else if (y.dataset.y === 'email') N.shareTo(r.uri, 'audio/mp4', 'email', '', subj, `Здравейте,\n\nИзпращаме Ви записа от общото събрание.\n\nПоздрави,\n${COMPANY}`);
+          else if (y.dataset.y === 'share') N.shareFile(r.uri, 'audio/mp4');
+          s2.remove();
+        });
+      }
+    });
+  }
 
   function go(hash, replace) {
     if (location.hash === hash) { render(true); return; }
@@ -451,12 +665,18 @@
     }
   }
 
+  /* ---------- Марка „Капитал Инвест“ ---------- */
+  const wordmark = sub => `<div><div class="wm">CAPITAL <span>INVEST</span></div><div class="wsub">${sub || 'ИНВЕСТИРАМЕ ВЪВ ВАШЕТО БЪДЕЩЕ'}</div></div>`;
+  const heroHtml = (inner, band) => `<div class="hero"><div class="in">${BR.logo ? `<img class="lg" src="${BR.logo}" alt="Capital Invest">` : ''}${inner}</div>${band ? `<div class="band ticks">${band}</div>` : ''}</div>`;
+
   /* ---------- Вход в програмата ---------- */
   function scrLogin() {
-    $top.innerHTML = `<div class="tt" style="padding-left:10px"><div class="t1">Протоколи КИ</div><div class="t2">Капитал Инвест България</div></div>`;
+    $top.innerHTML = `${BR.logoW ? `<img class="lgw" src="${BR.logoW}" alt="">` : ''}<div class="tt" style="padding-left:6px"><div class="t1">Протоколи КИ</div><div class="t2">Капитал Инвест България</div></div>`;
     tabs();
-    html(`<div class="login"><div class="logo"><b>🏢 Протоколи КИ</b><span>Общи събрания на етажната собственост</span></div>
-      <div class="card"><label class="l">Потребител</label><input id="k-u" autocomplete="username" autocapitalize="none" value="${esc(LS.get('user', ''))}">
+    html(`<div class="login">${heroHtml(`${wordmark()}<div class="script" style="margin-top:10px">Инвестираме в хората.</div>`,
+        '<span>Прозрачност</span><span>Професионализъм</span><span>Доверие</span><span>Резултати</span>')}
+      <div class="icons4"><div><i class="i1">🏠</i>Управление<br>на имоти</div><div><i class="i2">🌿</i>Поддръжка<br>и грижа</div><div><i class="i3">📈</i>Стабилни<br>инвестиции</div><div><i class="i4">👥</i>Доволни<br>съседи</div></div>
+      <div class="card"><h2>🔐 Вход в Протоколи</h2><label class="l">Потребител</label><input id="k-u" autocomplete="username" autocapitalize="none" value="${esc(LS.get('user', ''))}">
       <label class="l">Парола</label><input id="k-p" type="password" autocomplete="current-password">
       <button class="btn big" data-act="login">Вход</button><p class="mut" id="k-le" style="color:var(--bad)"></p></div></div>`);
     setTimeout(() => (root.querySelector('#k-u').value ? root.querySelector('#k-p') : root.querySelector('#k-u')).focus(), 50);
@@ -483,7 +703,8 @@
     const q = SS.get('q', '');
     const recent = LS.get('recent', []);
     const rec = recent.map(id => list.find(b => b.id === id)).filter(Boolean).slice(0, 3);
-    html(`<div class="search"><input id="k-q" type="search" placeholder="🔎 Търси вход или адрес…" value="${esc(q)}"></div>
+    html(`${q ? '' : heroHtml(`<div>${wordmark('ОБЩИ СЪБРАНИЯ И ПРОТОКОЛИ')}<div class="mut" style="margin-top:8px;font-weight:600">${list.length} активни входа</div></div>`)}
+      <div class="search"><input id="k-q" type="search" placeholder="🔎 Търси вход или адрес…" value="${esc(q)}"></div>
       ${rec.length && !q ? `<h3>Последно отваряни</h3>${rec.map(bItem).join('')}<h3>Всички входове (${list.length})</h3>` : ''}
       <div id="k-bl">${bList(list, q)}</div>`, keep);
   }
@@ -798,6 +1019,7 @@
     m.innerHTML = `<div class="sheet">${inner}</div>`;
     m.addEventListener('click', e => { if (e.target === m) m.remove(); });
     root.appendChild(m);
+    decorateAi(m.querySelector('.sheet'));
     return m;
   }
   const stamp = () => { const d = new Date(); return `${bgDate(isoOf(d))} ${nowHm()}`; };
@@ -1565,6 +1787,8 @@
   const A = {
     login: () => doLogin(),
     menu: () => menu(),
+    ai: el => aiRewrite(el),
+    rec: () => recSheet(),
     closeMenu: el => el.closest('.menu').remove(),
     reload: () => render(),
     refresh: async el => { el.closest('.menu') && el.closest('.menu').remove(); D.buildings = null; D.all = null; D.b = {}; D.m = {}; D.chair = {}; D.sec = {}; D.det = {}; D.fees = {}; await render(); toast('Обновено'); },

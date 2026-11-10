@@ -35,13 +35,13 @@ jobs:
           fi
           cp keystore/app.keystore ~/.android/debug.keystore
       - name: Bundle print + screens
-        run: cp ../vendor/mammoth.browser.min.js www/mammoth.js && cat ../vendor/html2canvas.min.js > www/skin.js && printf '\n;\n' >> www/skin.js && cat ../print.js >> www/skin.js && printf '\n;\n' >> www/skin.js && cat ../mobile.js >> www/skin.js && printf '\n;\n' >> www/skin.js && cat ../skin.js >> www/skin.js
+        run: cp ../vendor/mammoth.browser.min.js www/mammoth.js && cat ../vendor/html2canvas.min.js > www/skin.js && printf '\n;\n' >> www/skin.js && cat ../print.js >> www/skin.js && printf '\n;\n' >> www/skin.js && cat ../brand.js >> www/skin.js && printf '\n;\n' >> www/skin.js && cat ../mobile.js >> www/skin.js && printf '\n;\n' >> www/skin.js && cat ../skin.js >> www/skin.js
       - run: npm install
       - run: npx cap add android
       - name: Skin activity, icon, version
         run: |
           D=android/app/src/main/java/bg/capitalinvest/protokol
-          mkdir -p $D && cp native/MainActivity.java $D/MainActivity.java
+          mkdir -p $D && cp native/MainActivity.java native/RecService.java $D/
           R=android/app/src/main/res
           rm -rf $R/mipmap-anydpi-v26
           for d in mdpi hdpi xhdpi xxhdpi xxxhdpi; do
@@ -52,6 +52,9 @@ jobs:
           M=android/app/src/main/AndroidManifest.xml
           sed -i 's#<uses-permission android:name="android.permission.INTERNET" />#<uses-permission android:name="android.permission.INTERNET" />\n    <uses-permission android:name="android.permission.BLUETOOTH" android:maxSdkVersion="30" />\n    <uses-permission android:name="android.permission.BLUETOOTH_ADMIN" android:maxSdkVersion="30" />\n    <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />#' $M
           grep -n BLUETOOTH $M
+          sed -i 's#<uses-permission android:name="android.permission.INTERNET" />#<uses-permission android:name="android.permission.INTERNET" />\n    <uses-permission android:name="android.permission.RECORD_AUDIO" />\n    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />\n    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />\n    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />#' $M
+          sed -i 's#</application>#    <service android:name=".RecService" android:exported="false" android:foregroundServiceType="microphone" />\n    </application>#' $M
+          grep -n "RECORD_AUDIO\|RecService" $M
           sed -i 's#</manifest>#    <queries>\n        <intent><action android:name="android.intent.action.SEND" /><data android:mimeType="*/*" /></intent>\n        <package android:name="com.viber.voip" />\n        <package android:name="com.google.android.gm" />\n        <package android:name="com.microsoft.office.outlook" />\n    </queries>\n</manifest>#' $M
           grep -n -A3 "<queries>" $M
           G=android/app/build.gradle
@@ -73,7 +76,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with: { node-version: 20 }
-      - run: cp ../skin.js ../print.js ../mobile.js ../vendor/html2canvas.min.js . && cp ../vendor/mammoth.browser.min.js mammoth.js
+      - run: cp ../skin.js ../print.js ../brand.js ../mobile.js ../vendor/html2canvas.min.js . && cp ../vendor/mammoth.browser.min.js mammoth.js
       - run: npm install
       - run: npm run dist
         env: { CSC_IDENTITY_AUTO_DISCOVERY: "false" }
