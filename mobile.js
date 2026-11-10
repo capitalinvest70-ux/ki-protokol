@@ -416,6 +416,52 @@
   #kim .tabs button.rt b { background:linear-gradient(135deg,#f0625a,#c62828); color:#fff; }
   #kim .tabs button.rt.on b { animation:kimpulse 1.4s infinite; }
   #kim .tabs button.rt.on { color:#c62828; font-variant-numeric:tabular-nums; }
+
+  /* ===== Компютър (Windows): меню отляво, съдържание в колони ===== */
+  #kim.desk.wide { --sidew:264px; }
+  #kim.desk.wide .top { padding-left:18px; padding-right:18px; min-height:68px; }
+  #kim.desk.wide .top .lgw { height:40px; }
+  #kim.desk.wide .main { padding-left:40px; padding-right:40px; }
+  #kim.desk.wide.side .main { padding-left:calc(var(--sidew) + 32px); }
+  #kim.desk.wide .tabs { top:var(--toph,68px); bottom:0; left:0; right:auto; width:var(--sidew); flex-direction:column; justify-content:flex-start; gap:6px;
+    padding:18px 14px; border-top:0; border-right:1px solid rgba(13,45,107,.08); background:rgba(255,255,255,.68); box-shadow:8px 0 26px rgba(13,45,107,.06); }
+  #kim.desk.wide .tabs button { flex:none; flex-direction:row; justify-content:flex-start; align-items:center; gap:14px; min-height:60px; padding:8px 12px;
+    border-radius:16px; font-size:.95em; text-align:left; color:#3d5079; }
+  #kim.desk.wide .tabs button b { margin:0; flex:none; }
+  #kim.desk.wide .tabs button:hover { background:rgba(31,120,234,.07); }
+  #kim.desk.wide .tabs button.on { background:rgba(31,120,234,.12); color:var(--navy); }
+  #kim .tabs .sbrand { display:none; }
+  #kim.desk.wide .tabs .sbrand { display:flex; align-items:center; gap:10px; padding:2px 8px 16px; margin-bottom:6px; border-bottom:1px solid rgba(13,45,107,.08); }
+  #kim.desk.wide .tabs .sbrand img { height:46px; width:auto; }
+  #kim.desk.wide .tabs .sbrand .wm { font-size:1.02em; }
+  #kim.desk.wide .tabs .sbrand .wsub { font-size:.48em; letter-spacing:.14em; }
+  /* колони според екрана */
+  #kim.desk.wide .main > * { min-width:0; }
+  #kim.desk.wide .main[data-r=p], #kim.desk.wide .main[data-r=pts], #kim.desk.wide .main[data-r=ppl], #kim.desk.wide .main[data-r=end], #kim.desk.wide .main[data-r=b] {
+    display:grid; grid-template-columns:repeat(2, minmax(0, 1fr)); column-gap:18px; align-content:start; align-items:start; }
+  #kim.desk.wide .main[data-r=p] > :not(.card):not(.item), #kim.desk.wide .main[data-r=pts] > :not(.card):not(.item),
+  #kim.desk.wide .main[data-r=ppl] > :not(.card):not(.item), #kim.desk.wide .main[data-r=end] > :not(.card):not(.item),
+  #kim.desk.wide .main[data-r=b] > :not(.card):not(.item), #kim.desk.wide .main[data-r=p] > .card:first-child { grid-column:1 / -1; }
+  #kim.desk.wide #k-ul { display:grid; grid-template-columns:repeat(auto-fill, minmax(340px, 1fr)); gap:12px; }
+  #kim.desk.wide #k-ul .unit { margin:0; }
+  #kim.desk.wide #k-ul .empty { grid-column:1 / -1; }
+  #kim.desk.wide .main[data-r=list] #k-bl { display:grid; grid-template-columns:repeat(auto-fill, minmax(340px, 1fr)); gap:14px; }
+  #kim.desk.wide .main[data-r=list] #k-bl .item { margin:0; }
+  #kim.desk.wide .main[data-r=list] .hint { display:none; }
+  #kim.desk.wide .main[data-r=list] .search { max-width:680px; }
+  #kim.desk.wide .stick { position:static; background:none; display:flex; gap:12px; align-items:stretch; padding:6px 0 0; margin:0; }
+  #kim.desk.wide .stick > .btn { flex:1.3; margin:0 !important; }
+  #kim.desk.wide .stick > .grid2 { flex:2; margin:0 !important; }
+  #kim.desk.wide .hero .in { padding:24px 30px; gap:22px; }
+  #kim.desk.wide .hero .lg { height:104px; }
+  #kim.desk.wide .hero .wm { font-size:2.1em; }
+  #kim.desk.wide .login { max-width:1040px; margin:3vh auto 0; display:grid; grid-template-columns:1fr 1fr; gap:22px; align-items:center; }
+  #kim.desk.wide .login .hero { grid-column:1 / -1; margin:0; }
+  #kim.desk.wide .login .icons4 { margin:0; gap:14px; }
+  #kim.desk.wide .login .card { margin:0; }
+  #kim.desk .item:hover { transform:translateY(-2px); box-shadow:0 12px 28px rgba(13,45,107,.14); }
+  #kim.desk .btn:hover, #kim.desk .aibar button:hover { filter:brightness(1.07); }
+  #kim.desk .unit:hover { box-shadow:0 8px 22px rgba(13,45,107,.14); }
   @media (prefers-reduced-motion: reduce) { #kim *, #kim *::before, #kim *::after { animation-duration:.01ms !important; animation-delay:0s !important; transition-duration:.01ms !important; } }
   `;
   const deskCss = `
@@ -590,12 +636,14 @@
     if (cur === 'chair') cur = 'ppl';
     const T = [['att', '👥', 'Присъстващи'], ['ppl', '🧑‍💼', 'Хора и такси'], ['pts', '🗳️', 'Гласуване'], ['end', '✍️', 'Подписи и край']];
     $tabs.hidden = false;
-    $tabs.innerHTML = T.map(([k, i, l]) => `<button class="${cur === k ? 'on' : ''}" data-go="#/m/${mid}/${k}"><b>${i}</b>${l}</button>`).join('') + recTab();
+    $tabs.innerHTML = (DESK ? `<div class="sbrand">${BR.logo ? `<img src="${BR.logo}" alt="">` : ''}${wordmark('ПРОТОКОЛИ')}</div>` : '') + T.map(([k, i, l]) => `<button class="${cur === k ? 'on' : ''}" data-go="#/m/${mid}/${k}"><b>${i}</b>${l}</button>`).join('') + recTab();
   }
   let lastDepth = 0, enterT = null;
   const html = (h, keepScroll) => {
     const prev = keepScroll ? rollSnap() : null;
     if (dictT && window.KIAndroid && window.KIAndroid.dictStop) { window.KIAndroid.dictStop(); dictT = null; }
+    const hp = (location.hash || '#/').replace(/^#\/?/, '').split('/').filter(Boolean);
+    $main.dataset.r = !hp.length ? 'list' : hp[0] === 'b' ? (hp[2] === 'new' ? 'new' : 'b') : hp[0] === 'm' ? (hp[2] === 'p' ? 'p' : (hp[2] || 'att')) : hp[0];
     const y = $main.scrollTop; $main.innerHTML = h; decorateAi($main); $main.scrollTop = keepScroll ? y : 0;
     setBars();
     if (prev) rollApply(prev);
@@ -654,9 +702,12 @@
 
   /* ---------- ✨ Плавност: ленти, вибрация, успех, въртящи се цифри ---------- */
   let dragging = null, suppressClick = false;
+  const WIDE = () => DESK && window.innerWidth >= 900;
   function setBars() {
+    const w = WIDE();
+    root.classList.toggle('wide', w); root.classList.toggle('side', w && !$tabs.hidden);
     root.style.setProperty('--toph', $top.offsetHeight + 'px');
-    root.style.setProperty('--tabh', ($tabs.hidden ? 0 : $tabs.offsetHeight) + 'px');
+    root.style.setProperty('--tabh', (w || $tabs.hidden ? 0 : $tabs.offsetHeight) + 'px');
   }
   if (window.ResizeObserver) { const ro = new ResizeObserver(setBars); ro.observe($top); ro.observe($tabs); }
   window.addEventListener('resize', setBars);
@@ -738,7 +789,7 @@
     let timer = null, start = null;
     $main.addEventListener('pointerdown', e => {
       const it = e.target.closest('#k-bl .item');
-      if (!it || SS.get('q', '') || (e.button && e.button > 0)) return;
+      if (!it || WIDE() || SS.get('q', '') || (e.button && e.button > 0)) return;
       start = { x: e.clientX, y: e.clientY, it, id: e.pointerId };
       clearTimeout(timer); timer = setTimeout(lift, 380);
     });
