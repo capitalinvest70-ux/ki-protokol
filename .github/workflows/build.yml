@@ -57,6 +57,23 @@ jobs:
           grep -n "RECORD_AUDIO\|RecService" $M
           grep -q windowSoftInputMode $M || sed -i 's#<activity#<activity android:windowSoftInputMode="adjustResize"#' $M
           grep -n windowSoftInputMode $M
+          sed -i 's#android:configChanges="[^"]*"#android:configChanges="orientation|keyboardHidden|keyboard|screenSize|smallestScreenSize|screenLayout|uiMode|navigation|locale|layoutDirection|fontScale|density|colorMode|touchscreen|mcc|mnc"#' $M
+          grep -n configChanges $M
+          # Постоянен подпис: всяка версия се подписва с ключа от keystore/app.keystore, за да се инсталира върху старата
+          cat >> android/app/build.gradle <<'GRADLE'
+
+          android {
+              signingConfigs {
+                  debug {
+                      storeFile file("${rootDir}/../keystore/app.keystore")
+                      storePassword "android"
+                      keyAlias "androiddebugkey"
+                      keyPassword "android"
+                  }
+              }
+          }
+          GRADLE
+          tail -12 android/app/build.gradle
           sed -i 's#</manifest>#    <queries>\n        <intent><action android:name="android.intent.action.SEND" /><data android:mimeType="*/*" /></intent>\n        <intent><action android:name="android.speech.RecognitionService" /></intent>\n        <package android:name="com.viber.voip" />\n        <package android:name="com.google.android.gm" />\n        <package android:name="com.microsoft.office.outlook" />\n    </queries>\n</manifest>#' $M
           grep -n -A3 "<queries>" $M
           G=android/app/build.gradle
@@ -66,6 +83,12 @@ jobs:
         working-directory: mobile/android
         run: chmod +x gradlew && ./gradlew assembleDebug
       - run: mv android/app/build/outputs/apk/debug/app-debug.apk "../$APKNAME.apk"
+      - name: Check signing key (must match keystore/app.keystore)
+        run: |
+          A=$(keytool -printcert -jarfile "../$APKNAME.apk" | grep 'SHA256:' | awk '{print $NF}')
+          K=$(keytool -list -v -keystore keystore/app.keystore -storepass android | grep 'SHA256:' | awk '{print $NF}')
+          echo "APK: $A"; echo "KEY: $K"
+          [ -n "$A" ] && [ "$A" = "$K" ] || { echo "Signing key mismatch"; exit 1; }
       - uses: actions/upload-artifact@v4
         with:
           name: android

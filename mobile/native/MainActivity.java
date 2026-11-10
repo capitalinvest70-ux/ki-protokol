@@ -19,6 +19,9 @@ import java.io.FileInputStream;
 import java.net.HttpURLConnection;
 import java.net.URL;
 import android.content.pm.PackageInfo;
+import android.view.View;
+import androidx.core.view.ViewCompat;
+import androidx.core.view.WindowInsetsCompat;
 import android.speech.RecognitionListener;
 import android.speech.RecognizerIntent;
 import android.speech.SpeechRecognizer;
@@ -54,6 +57,7 @@ import java.nio.charset.StandardCharsets;
 public class MainActivity extends BridgeActivity {
 
     private String skin = "";
+    private int lastKb = -1;
     private static final UUID SPP = UUID.fromString("00001101-0000-1000-8000-00805F9B34FB");
     private BluetoothSocket btSock = null;
     private String btAddr = null;
@@ -78,11 +82,24 @@ public class MainActivity extends BridgeActivity {
 
         wv.addJavascriptInterface(new KI(), "KIAndroid");
 
+        // Клавиатурата: казваме на страницата колко е висока, за да остане полето за писане видимо
+        final View decor = getWindow().getDecorView();
+        ViewCompat.setOnApplyWindowInsetsListener(decor, (v, insets) -> {
+            int ime = insets.isVisible(WindowInsetsCompat.Type.ime()) ? insets.getInsets(WindowInsetsCompat.Type.ime()).bottom : 0;
+            int css = Math.round(ime / getResources().getDisplayMetrics().density);
+            if (css != lastKb) {
+                lastKb = css;
+                wv.post(() -> wv.evaluateJavascript("window.KIM_kbd&&KIM_kbd(" + css + ")", null));
+            }
+            return ViewCompat.onApplyWindowInsets(v, insets);
+        });
+
         getBridge().setWebViewClient(new BridgeWebViewClient(getBridge()) {
             @Override
             public void onPageFinished(WebView view, String url) {
                 super.onPageFinished(view, url);
                 if (!skin.isEmpty()) view.evaluateJavascript(skin, null);
+                if (lastKb >= 0) view.evaluateJavascript("window.KIM_kbd&&KIM_kbd(" + lastKb + ")", null);
                 CookieManager.getInstance().flush();
             }
         });
@@ -529,6 +546,8 @@ public class MainActivity extends BridgeActivity {
         runOnUiThread(() -> {
             dictOn = false;
             if (sr != null) { try { sr.stopListening(); } catch (Exception ignored) { } }
+            // някои телефони не връщат резултат след „Спри“ – приключваме сами
+            getBridge().getWebView().postDelayed(() -> { if (!dictOn) dictJs("end", ""); }, 1500);
         });
     }
 

@@ -54,7 +54,15 @@ ipcMain.handle('ki-update', async (e, url, name) => {
   try {
     await fetchTo(url, file, p => send(p));
     send(100);
-    setTimeout(() => { shell.openPath(file); setTimeout(() => app.quit(), 1500); }, 700);
+    // Първо затваряме приложението, после тръгва инсталаторът – иначе той казва, че нещо му пречи
+    setTimeout(() => {
+      try {
+        require('child_process').spawn('cmd.exe', ['/d', '/s', '/c', `"ping -n 4 127.0.0.1 >nul & start "" "${file}""`],
+          { detached: true, stdio: 'ignore', windowsHide: true, windowsVerbatimArguments: true }).unref();
+      } catch (x) { shell.openPath(file); }
+      BrowserWindow.getAllWindows().forEach(w => { try { w.destroy(); } catch (x) {} });
+      app.exit(0);
+    }, 900);
     return 'OK';
   } catch (err) { send(-1, 'Свалянето спря: ' + err.message); return 'ERR ' + err.message; }
 });
@@ -135,11 +143,12 @@ ipcMain.handle('ki-print-image', async (e, dataUrl, o) => {
   const pw = new BrowserWindow({ show: false, webPreferences: { offscreen: false } });
   try {
     await pw.loadFile(file);
-    await new Promise((res, rej) => pw.webContents.print({
+    await Promise.race([new Promise((res, rej) => pw.webContents.print({
       silent: true, deviceName: o.deviceName, printBackground: true, color: false,
       margins: { marginType: 'none' },
       pageSize: o.a4 ? 'A4' : { width: Math.round(o.paperMm * 1000), height: Math.round((Math.ceil(o.heightMm) + 1) * 1000) },
-    }, (ok, why) => ok ? res() : rej(new Error(why || 'Принтерът отказа'))));
+    }, (ok, why) => ok ? res() : rej(new Error(why || 'Принтерът отказа')))),
+      new Promise((_, rej) => setTimeout(() => rej(new Error('Принтерът не отговаря – проверете драйвера му в Windows')), 25000))]);
   } finally {
     pw.destroy();
     fs.unlink(file, () => {});
@@ -196,3 +205,5 @@ ipcMain.handle('ki-asset', (e, name) => /^[a-z0-9.-]+\.js$/.test(name) && fs.exi
 app.on('second-instance', () => { if (win) { if (win.isMinimized()) win.restore(); win.focus(); } });
 app.whenReady().then(() => { Menu.setApplicationMenu(null); setupDownloads(); createWindow(); });
 app.on('window-all-closed', () => app.quit());
+// Скрит прозорец за печат не бива да държи програмата отворена след затваряне
+app.on('browser-window-created', (e, w) => { w.on('closed', () => { if (win && win.isDestroyed()) app.exit(0); }); });

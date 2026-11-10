@@ -334,14 +334,24 @@
   #kim::before { content:''; position:absolute; inset:0; pointer-events:none; z-index:0;
     background:radial-gradient(45% 32% at 8% 12%, rgba(59,139,255,.24), transparent 70%), radial-gradient(38% 30% at 96% 34%, rgba(139,90,216,.17), transparent 70%),
       radial-gradient(42% 30% at 25% 96%, rgba(243,195,74,.17), transparent 70%), radial-gradient(36% 26% at 92% 88%, rgba(92,191,79,.15), transparent 70%); }
-  #kim .main { position:relative; z-index:1; padding-top:calc(var(--toph,64px) + 12px); padding-bottom:calc(var(--tabh,0px) + 28px); }
+  #kim .main { position:relative; z-index:1; padding-top:calc(var(--toph,64px) + 12px); padding-bottom:calc(var(--tabh,0px) + var(--dockh,0px) + 28px); }
   #kim .top { position:absolute; top:0; left:0; right:0; z-index:5; background:linear-gradient(100deg,rgba(8,34,86,.93),rgba(16,66,170,.88));
     -webkit-backdrop-filter:blur(22px) saturate(180%); backdrop-filter:blur(22px) saturate(180%); border-bottom:1px solid rgba(120,175,255,.55); box-shadow:0 8px 24px rgba(9,38,92,.16); }
   #kim .tabs { position:absolute; left:0; right:0; bottom:0; z-index:5; background:rgba(255,255,255,.7);
     -webkit-backdrop-filter:blur(22px) saturate(180%); backdrop-filter:blur(22px) saturate(180%); border-top:1px solid rgba(255,255,255,.75); }
   #kim .tabs[hidden], #kim.kbd .tabs { display:none; }
+  #kim .dock { position:absolute; left:0; right:0; bottom:var(--tabh,0px); z-index:4; display:flex; gap:8px; padding:8px 12px;
+    background:rgba(250,252,255,.96); -webkit-backdrop-filter:blur(22px) saturate(180%); backdrop-filter:blur(22px) saturate(180%);
+    border-top:1px solid rgba(13,45,107,.1); box-shadow:0 -6px 18px rgba(13,45,107,.07); }
+  #kim .dock[hidden], #kim.kbd .dock { display:none; }
+  #kim .dock .btn { margin:0; min-height:54px; width:auto; }
+  #kim .dock .grow { flex:1; }
+  #kim .dock .sq { flex:none; width:60px; font-size:1.5em; padding:0; }
+  #kim.desk.wide.side .dock { left:var(--sidew); padding:10px 40px 10px 32px; }
+  #kim.desk.wide .dock .btn { max-width:420px; }
+  #kim.desk.wide .dock { justify-content:center; }
   #kim.kbd .stick { position:static; }
-  #kim .main { scroll-padding-top:calc(var(--toph,64px) + 10px); scroll-padding-bottom:calc(var(--tabh,0px) + 16px); }
+  #kim .main { scroll-padding-top:calc(var(--toph,64px) + 10px); scroll-padding-bottom:calc(var(--tabh,0px) + var(--dockh,0px) + 16px); }
   #kim .navrow { margin-top:4px; }
   #kim .search { top:calc(var(--toph,64px) - 2px); background:transparent; padding-top:6px; }
   #kim .search input { background:rgba(255,255,255,.82); -webkit-backdrop-filter:blur(16px); backdrop-filter:blur(16px); }
@@ -489,9 +499,10 @@
   const root = document.createElement('div'); root.id = 'kim';
   if (BR.hero) root.style.setProperty('--hero', `url(${BR.hero})`);
   if (DESK) root.classList.add('desk');
-  root.innerHTML = `<div class="top"></div><div class="main"></div><div class="tabs" hidden></div><div class="toast hide"></div>`;
+  root.innerHTML = `<div class="top"></div><div class="main"></div><div class="dock" hidden></div><div class="tabs" hidden></div><div class="toast hide"></div>`;
   document.body.appendChild(root);
-  const $top = root.querySelector('.top'), $main = root.querySelector('.main'), $tabs = root.querySelector('.tabs'), $toast = root.querySelector('.toast');
+  const $top = root.querySelector('.top'), $main = root.querySelector('.main'), $tabs = root.querySelector('.tabs'), $toast = root.querySelector('.toast'), $dock = root.querySelector('.dock');
+  const setDock = h => { $dock.innerHTML = h || ''; $dock.hidden = !h; if (typeof setBars === 'function') try { setBars(); } catch (e) {} };
   const setFs = v => { v = Math.max(15, Math.min(26, v)); LS.set('fs', v); root.style.setProperty('--fs', v + 'px'); return v; };
   setFs(LS.get('fs', DESK ? 21 : 18));
 
@@ -645,6 +656,7 @@
   const html = (h, keepScroll) => {
     const prev = keepScroll ? rollSnap() : null;
     if (dictT && window.KIAndroid && window.KIAndroid.dictStop) { window.KIAndroid.dictStop(); dictT = null; }
+    setDock('');
     const hp = (location.hash || '#/').replace(/^#\/?/, '').split('/').filter(Boolean);
     $main.dataset.r = !hp.length ? 'list' : hp[0] === 'b' ? (hp[2] === 'new' ? 'new' : 'b') : hp[0] === 'm' ? (hp[2] === 'p' ? 'p' : (hp[2] || 'att')) : hp[0];
     const y = $main.scrollTop; $main.innerHTML = h; decorateAi($main); $main.scrollTop = keepScroll ? y : 0;
@@ -710,18 +722,26 @@
     const w = WIDE();
     root.classList.toggle('wide', w); root.classList.toggle('side', w && !$tabs.hidden);
     root.style.setProperty('--toph', $top.offsetHeight + 'px');
-    root.style.setProperty('--tabh', (w || $tabs.hidden || root.classList.contains('kbd') ? 0 : $tabs.offsetHeight) + 'px');
+    const k = root.classList.contains('kbd');
+    root.style.setProperty('--tabh', (w || $tabs.hidden || k ? 0 : $tabs.offsetHeight) + 'px');
+    root.style.setProperty('--dockh', ($dock.hidden || k ? 0 : $dock.offsetHeight) + 'px');
   }
-  // Клавиатурата: когато е отворена, долната лента се скрива и полето за писане остава видимо
-  let fullH = window.innerHeight;
-  const typing = () => { const a = document.activeElement; return !!(a && root.contains(a) && /^(TEXTAREA|INPUT|SELECT)$/.test(a.tagName) && !/^(checkbox|radio|button)$/.test(a.type || '')); };
+  // Клавиатурата: телефонът казва колко е висока (KIM_kbd). Докато е отворена, долните ленти се скриват,
+  // а ако покрива страницата, страницата се вдига точно над нея – полето за писане остава видимо.
+  let fullH = window.innerHeight, fullW = window.innerWidth, nativeKb = null;
+  const typing = () => { const a = document.activeElement; return !!(a && root.contains(a) && /^(TEXTAREA|INPUT|SELECT)$/.test(a.tagName) && !/^(checkbox|radio|button|file)$/.test(a.type || '')); };
   function kbdCheck() {
-    if (!typing()) fullH = Math.max(fullH, window.innerHeight);
-    const open = typing() && window.innerHeight < fullH * 0.8;
+    if (window.innerWidth !== fullW) { fullW = window.innerWidth; fullH = window.innerHeight; }
+    if (!typing() && !(nativeKb > 60)) fullH = Math.max(fullH, window.innerHeight);
+    const shrunk = Math.max(0, fullH - window.innerHeight);
+    const open = nativeKb != null ? nativeKb > 60 : (typing() && window.innerHeight < fullH * 0.8);
+    const cover = nativeKb > 60 ? Math.max(0, nativeKb - shrunk) : 0;   // клавиатурата е върху страницата
+    root.style.bottom = cover > 24 ? cover + 'px' : '';
     const was = root.classList.contains('kbd');
-    root.classList.toggle('kbd', open); setBars();
-    if (open) { const a = document.activeElement; setTimeout(() => { try { a.scrollIntoView({ block: 'nearest' }); } catch (e) {} }, was ? 0 : 80); }
+    if (was !== open) { root.classList.toggle('kbd', open); setBars(); }
+    if (open && typing()) { const a = document.activeElement; setTimeout(() => { try { a.scrollIntoView({ block: 'nearest' }); } catch (e) {} }, was ? 0 : 120); }
   }
+  window.KIM_kbd = h => { nativeKb = +h || 0; kbdCheck(); };
   window.addEventListener('resize', kbdCheck);
   root.addEventListener('focusin', () => setTimeout(kbdCheck, 350));
   root.addEventListener('focusout', () => setTimeout(kbdCheck, 150));
@@ -929,31 +949,32 @@
 
   /* ---------- 🎤 Диктуване: говориш и текстът се изписва в полето ---------- */
   const DICT = !!(window.KIAndroid && window.KIAndroid.dictStart) || DESK;
-  let dictT = null;   // полето, в което се пише в момента
+  let dictT = null, dictBase = '';   // полето, в което се пише, и текстът в него преди текущото изречение
   function dictUi(on) {
     root.querySelectorAll('.aibar .dict').forEach(b => {
       const mine = on && dictT && b.parentElement.previousElementSibling === dictT;
       b.classList.toggle('on', !!mine);
       b.textContent = mine ? '■ Спри – слушам…' : '🎤 Говори – текстът се изписва сам';
     });
-    if (!on) root.querySelectorAll('.aibar .dlive').forEach(d => { d.textContent = ''; });
+    root.querySelectorAll('.aibar .dlive').forEach(d => { d.textContent = on && dictT && d.parentElement.previousElementSibling === dictT ? '● Слушам – говорете. Текстът се пише горе в полето.' : ''; });
   }
-  function dictAppend(text) {
-    const t = dictT; if (!t || !text) return;
-    let v = t.value, add = text.trim();
-    const endsSentence = !v.trim() || /[.!?…]\s*$/.test(v);
-    if (endsSentence) add = add.charAt(0).toUpperCase() + add.slice(1);
-    t.value = v + (v && !/\s$/.test(v) ? ' ' : '') + add;
-    t.dispatchEvent(new Event('input', { bubbles: true }));
-    t.scrollTop = t.scrollHeight;
+  const dictJoin = (base, add) => {
+    add = String(add || '').trim(); if (!add) return base;
+    if (!base.trim() || /[.!?…]\s*$/.test(base)) add = add.charAt(0).toUpperCase() + add.slice(1);
+    return base + (base && !/\s$/.test(base) ? ' ' : '') + add;
+  };
+  const dictFire = t => { t.dispatchEvent(new Event('input', { bubbles: true })); };
+  function dictEnd() {
+    const t = dictT; if (!t) return;
+    dictT = null; dictUi(false);
+    if (t.isConnected) { dictFire(t); t.dispatchEvent(new Event('change', { bubbles: true })); }
   }
   window.KIM_dict = (kind, text) => {
-    const live = dictT && dictT.nextElementSibling && dictT.nextElementSibling.querySelector('.dlive');
-    if (kind === 'ready') { if (live && !live.textContent) live.textContent = 'Говорете…'; }
-    else if (kind === 'part') { if (live) live.textContent = text || 'Говорете…'; }
-    else if (kind === 'final') { dictAppend(text); if (live) live.textContent = 'Говорете…'; }
-    else if (kind === 'err') { toast(text, true); dictT = null; dictUi(false); }
-    else if (kind === 'end') { if (dictT) { const t = dictT; dictT = null; dictUi(false); t.dispatchEvent(new Event('change', { bubbles: true })); } }
+    const t = dictT; if (!t) return;
+    if (kind === 'part') { if (text) { t.value = dictJoin(dictBase, text); t.scrollTop = t.scrollHeight; } }
+    else if (kind === 'final') { if (text) t.value = dictJoin(dictBase, text); dictBase = t.value; t.scrollTop = t.scrollHeight; dictFire(t); }
+    else if (kind === 'err') { toast(text, true); dictEnd(); }
+    else if (kind === 'end') dictEnd();
   };
   function dictToggle(el) {
     const t = el.parentElement && el.parentElement.previousElementSibling;
@@ -973,7 +994,7 @@
       return;
     }
     if (/^ERR/.test(r)) { toast(r.replace(/^ERR\s*/, ''), true); return; }
-    dictT = t; dictUi(true); haptic(10);
+    dictT = t; dictBase = t.value; dictUi(true); haptic(10);
   }
 
   /* ---------- 🎙️ Запис на събранието от микрофона (приложението за Android) ---------- */
@@ -1825,11 +1846,14 @@
       <div class="card"><h2>📝 Текст в протокола</h2>
       <label class="l">Разисквания</label><textarea class="k-ag" data-f="discussion" ${closed ? 'disabled' : ''}>${esc(a.discussion || '')}</textarea>
       <label class="l">Предложение / решение${fixed && !(m.meeting_type === 'renewal' && num(a.item_no) === 1) ? '' : ' (задължително)'}</label><textarea class="k-ag ${!fixed && !String(a.proposal || '').trim() ? 'need' : ''}" data-f="proposal" ${closed ? 'disabled' : ''}>${esc(a.proposal || '')}</textarea>
-      <div class="mut" id="k-agst" style="margin-top:6px">Записва се само.</div></div>
-
-      <div class="${done || closed ? 'navrow' : 'stick'}">${closed || done ? '' : `<button class="btn big ok" data-act="done" data-v="1" style="margin-top:0">✓ Приключи точката${next ? ' и напред' : ''}</button>`}
-      <div class="grid2" style="margin-top:10px"><button class="btn out" ${prev ? `data-go="#/m/${mid}/p/${prev.id}"` : 'disabled'}>‹ Предишна</button>
-      <button class="btn out" ${next ? `data-go="#/m/${mid}/p/${next.id}"` : `data-go="#/m/${mid}/end"`}>${next ? 'Следваща ›' : 'Към края ›'}</button></div></div>`, keep);
+      <div class="mut" id="k-agst" style="margin-top:6px">Записва се само.</div></div>`, keep);
+    const nextGo = next ? `#/m/${mid}/p/${next.id}` : `#/m/${mid}/end`;
+    setDock(!done && !closed
+      ? `<button class="btn out sq" ${prev ? `data-go="#/m/${mid}/p/${prev.id}"` : 'disabled'} aria-label="Предишна точка">‹</button>
+         <button class="btn ok grow" data-act="done" data-v="1">✓ Приключи${next ? ' и напред' : ' точката'}</button>
+         <button class="btn out sq" data-go="${nextGo}" aria-label="Следваща">›</button>`
+      : `<button class="btn out grow" ${prev ? `data-go="#/m/${mid}/p/${prev.id}"` : 'disabled'}>‹ Предишна</button>
+         <button class="btn grow" data-go="${nextGo}">${next ? 'Следваща ›' : 'Към края ›'}</button>`);
   }
   const curAid = () => { const m = (location.hash || '').match(/\/p\/(\d+)/); return m ? +m[1] : null; };
   let agT = null;
