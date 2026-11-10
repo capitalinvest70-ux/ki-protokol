@@ -260,6 +260,10 @@
   #kim .top { background:linear-gradient(100deg,#09265c 0%,#0f3a88 55%,#1757cc 100%); border-bottom:3px solid #3b8bff; }
   #kim .top .t1 { font-weight:800; letter-spacing:.01em; }
   #kim .top .t2 { color:#a8ccff; opacity:1; }
+  #kim .top.pt { align-items:flex-start; padding-bottom:10px; }
+  #kim .top.pt .tt { display:flex; flex-direction:column-reverse; padding-top:4px; }
+  #kim .top.pt .t2 { font-size:.66em; text-transform:uppercase; letter-spacing:.09em; font-weight:700; margin-bottom:3px; }
+  #kim .top.pt .t1 { white-space:normal; font-size:.9em; line-height:1.22; font-weight:700; display:-webkit-box; -webkit-box-orient:vertical; -webkit-line-clamp:5; overflow:hidden; }
   #kim .top .lgw { height:36px; width:auto; margin:0 4px 0 6px; flex:none; }
   #kim .main { background:transparent; }
   #kim .card { border-radius:18px; border:1px solid #e2eaf6; box-shadow:0 6px 18px rgba(13,45,107,.07), 0 1px 2px rgba(13,45,107,.05); }
@@ -640,7 +644,9 @@
   }
 
   /* ---------- Рамка: горна лента, табове, маршрути ---------- */
+  let ptTitle = '';
   function top(title, sub, back, extra) {
+    $top.classList.remove('pt');
     $top.innerHTML = `${back ? `<button class="ib" data-go="${esc(back)}" aria-label="Назад">←</button>` : BR.logoW ? `<img class="lgw" src="${BR.logoW}" alt="">` : '<span style="width:8px"></span>'}
       <div class="tt"><div class="t1">${esc(title)}</div>${sub ? `<div class="t2">${esc(sub)}</div>` : ''}</div>
       ${extra || ''}${recBtn()}<button class="ib" data-act="menu" aria-label="Меню">⋮</button>`;
@@ -683,8 +689,7 @@
     });
   }
   function aiContext(t) {
-    const pt = $main.querySelector('.card .ttl');
-    const ptT = pt && /\/p\//.test(location.hash) ? pt.textContent.trim() : '';
+    const ptT = /\/p\//.test(location.hash) ? ptTitle : '';
     if (t.dataset.f === 'discussion') return 'Обсъждане по точка от дневния ред' + (ptT ? ': ' + ptT : '');
     if (t.dataset.f === 'proposal') return 'Предложение за решение по точка от дневния ред' + (ptT ? ': ' + ptT : '');
     let lab = t.previousElementSibling;
@@ -1820,7 +1825,8 @@
     const a = ag[i];
     if (!a) return go(`#/m/${mid}/pts`, true);
     const prev = ag[i - 1], next = ag[i + 1];
-    top(`Точка ${a.item_no} от ${ag.length}`, d.building ? d.building.name : '', `#/m/${mid}/pts`);
+    top(a.title, `Точка ${a.item_no} от ${ag.length}${d.building ? ' · ' + d.building.name : ''}`, `#/m/${mid}/pts`);
+    $top.classList.add('pt'); ptTitle = a.title;
     tabs(mid, 'pts');
     const votes = (d.votes || []).filter(v => num(v.agenda_item_id) === aid);
     const t = tally(att, votes);
@@ -1832,8 +1838,7 @@
     const fixed = m.meeting_type !== 'regular' && num(a.item_no) <= fixedLimit(m.meeting_type);
     const special = Object.entries(KIND_NO[m.meeting_type] || {}).find(([, no]) => no === num(a.item_no));
     const closed = isClosed(m), done = num(a.is_completed) === 1;
-    html(`<div class="card"><div class="ttl" style="font-size:1.05em">${esc(a.title)}</div>
-      <div class="mut" style="margin-top:6px">Нужно мнозинство: ${esc(req || '—')} от ${a.majority_base === 'present' ? 'присъстващите' : 'всички идеални части'}</div>
+    html(`<div class="card"><div class="mut">Нужно мнозинство: ${esc(req || '—')} от ${a.majority_base === 'present' ? 'присъстващите' : 'всички идеални части'}</div>
       ${done && !closed ? `<div class="row" style="margin-top:10px"><span class="chip ok">✓ Приключена</span><span class="grow"></span><button class="btn lite sm" data-act="done" data-v="0">↩️ Отвори отново</button></div>` : ''}
       ${special ? `<button class="btn out" data-go="#/m/${mid}/ppl">🧑‍💼 Имена и суми – „Хора и такси“ ›</button>` : fixed ? `<button class="btn out" data-act="full" data-m="${mid}" data-p="${aid}">⚙️ Подробности в пълната версия ›</button>` : ''}</div>
 
