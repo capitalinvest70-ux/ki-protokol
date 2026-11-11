@@ -225,10 +225,18 @@
   #kim .chips button { border:2px solid var(--line); background:#fff; border-radius:24px; padding:8px 12px; font-size:.85em; font-weight:600; min-height:44px; text-align:left; }
   #kim .chips button.on { border-color:var(--navy); background:var(--navy); color:#fff; }
   #kim .chips button small { display:block; font-weight:400; opacity:.75; font-size:.85em; }
-  #kim .padw { position:relative; border:2px dashed #9fb0cc; border-radius:14px; background:#fff; margin-top:8px; touch-action:none; }
-  #kim .padw canvas { display:block; width:100%; height:200px; touch-action:none; }
-  #kim .padw .ph { position:absolute; inset:0; display:flex; align-items:center; justify-content:center; color:#9fb0cc; pointer-events:none; font-weight:600; }
-  #kim .padw .ln { position:absolute; left:16px; right:16px; bottom:42px; border-bottom:2px solid #d6dfee; pointer-events:none; }
+  #kim .padw { position:relative; border:1.5px solid #cfdcf0; border-radius:18px; background:#fff; margin-top:8px; touch-action:none; overflow:hidden;
+    box-shadow:inset 0 2px 8px rgba(13,45,107,.06), 0 4px 14px rgba(13,45,107,.06); transition:border-color .2s, box-shadow .2s; }
+  #kim .padw.ink { border-color:#2e9e45; box-shadow:inset 0 2px 8px rgba(13,45,107,.04), 0 0 0 3px rgba(46,158,69,.14); }
+  #kim .padw canvas { display:block; width:100%; height:210px; touch-action:none; }
+  #kim .padw .ph { position:absolute; left:0; right:0; bottom:60px; text-align:center; color:#b4c2d9; pointer-events:none; font-weight:600; font-size:1.05em; }
+  #kim .padw .ph[hidden] { display:none; }
+  #kim .padw .ln { position:absolute; left:22px; right:22px; bottom:46px; border-bottom:2px solid #dbe4f2; pointer-events:none; }
+  #kim .padw .ln::before { content:'✕'; position:absolute; left:0; bottom:4px; color:#b4c2d9; font-size:1.1em; font-weight:700; }
+  #kim .padw .pclr { position:absolute; right:8px; top:8px; min-height:38px; padding:4px 12px; border-radius:20px; background:rgba(232,241,255,.95); color:var(--navy); font-weight:700; font-size:.8em; border:0; }
+  #kim .padw .pclr[hidden] { display:none; }
+  #kim [data-pad=done] { margin-top:10px; animation:kimpop .3s var(--ease, ease-out) both; }
+  #kim .sigok .grow { color:#0b5a31; font-weight:700; }
   #kim .sigok { display:flex; align-items:center; gap:10px; background:var(--okbg); border-radius:12px; padding:8px 12px; margin-top:8px; }
   #kim .sigok img { height:48px; max-width:60%; object-fit:contain; }
   #kim .photo { width:100%; max-height:220px; object-fit:contain; border-radius:10px; margin-top:8px; background:#f1f4fa; }
@@ -1489,6 +1497,12 @@
   /* ---------- Подпис с пръст ---------- */
   function sigPad(el) {
     const cv = el.querySelector('canvas'), ph = el.querySelector('.ph');
+    const clr = el.querySelector('[data-pad=clear]'), sh = el.closest('.sheet');
+    // „Готово“ излиза след подписа и прави същото като големия бутон за запис (само когато в прозореца има един подпис)
+    const saveB = sh && sh.querySelectorAll('.padw').length === 1 ? sh.querySelector('[data-sh=save], [data-x=save]') : null;
+    const doneB = saveB && el.nextElementSibling && el.nextElementSibling.matches('[data-pad=done]') ? el.nextElementSibling : null;
+    if (doneB) doneB.onclick = () => saveB.click();
+    const mark = on => { el.classList.toggle('ink', on); if (clr) clr.hidden = !on; if (doneB) { doneB.hidden = !on; if (on) setTimeout(() => { try { doneB.scrollIntoView({ block: 'nearest', behavior: 'smooth' }); } catch (e) {} }, 60); } };
     const dpr = Math.max(1, window.devicePixelRatio || 1);
     const fit = () => { const r = cv.getBoundingClientRect(); cv.width = Math.round(r.width * dpr); cv.height = Math.round(r.height * dpr); };
     fit();
@@ -1497,13 +1511,13 @@
     let drawing = false, last = null, ink = false, box = [1e9, 1e9, -1, -1];
     const pt = e => { const r = cv.getBoundingClientRect(); return [(e.clientX - r.left) * dpr, (e.clientY - r.top) * dpr]; };
     const grow = ([x, y]) => { box = [Math.min(box[0], x), Math.min(box[1], y), Math.max(box[2], x), Math.max(box[3], y)]; };
-    cv.addEventListener('pointerdown', e => { e.preventDefault(); cv.setPointerCapture(e.pointerId); drawing = true; last = pt(e); grow(last); g.beginPath(); g.arc(last[0], last[1], g.lineWidth / 2, 0, 7); g.fillStyle = g.strokeStyle; g.fill(); ink = true; if (ph) ph.hidden = true; });
+    cv.addEventListener('pointerdown', e => { e.preventDefault(); cv.setPointerCapture(e.pointerId); drawing = true; last = pt(e); grow(last); g.beginPath(); g.arc(last[0], last[1], g.lineWidth / 2, 0, 7); g.fillStyle = g.strokeStyle; g.fill(); if (!ink) { ink = true; if (ph) ph.hidden = true; mark(true); } });
     cv.addEventListener('pointermove', e => { if (!drawing) return; e.preventDefault(); const p = pt(e); g.beginPath(); g.moveTo(last[0], last[1]); g.lineTo(p[0], p[1]); g.stroke(); last = p; grow(p); });
     const end = () => { drawing = false; };
     cv.addEventListener('pointerup', end); cv.addEventListener('pointercancel', end);
     return {
       has: () => ink,
-      clear() { g.clearRect(0, 0, cv.width, cv.height); ink = false; box = [1e9, 1e9, -1, -1]; if (ph) ph.hidden = false; },
+      clear() { g.clearRect(0, 0, cv.width, cv.height); ink = false; box = [1e9, 1e9, -1, -1]; if (ph) ph.hidden = false; mark(false); },
       png() {
         if (!ink) return null;
         const m = 8 * dpr, x = Math.max(0, box[0] - m), y = Math.max(0, box[1] - m), w = Math.min(cv.width, box[2] + m) - x, h = Math.min(cv.height, box[3] + m) - y;
@@ -1514,10 +1528,11 @@
       },
     };
   }
-  const padHtml = (label, existing) => `<label class="l">${esc(label)}</label>
-    ${existing ? `<div class="sigok"><img src="${existing.img}" alt=""><div class="grow mut">Има подпис${existing.at ? ' · ' + esc(existing.at) : ''}.<br>Подпиши долу само ако трябва нов.</div></div>` : ''}
-    <div class="padw"><canvas></canvas><div class="ln"></div><div class="ph">✍️ Подпиши се тук ${DESK ? 'с мишката или писалката' : 'с пръст'}</div></div>
-    <div class="row" style="justify-content:flex-end;margin-top:6px"><button class="btn lite sm" data-pad="clear">Изчисти</button></div>`;
+  const padHtml = (label, existing) => `<label class="l">✍️ ${esc(label)}</label>
+    ${existing ? `<div class="sigok"><img src="${existing.img}" alt=""><div class="grow">✓ Има подпис</div></div>` : ''}
+    <div class="padw"><canvas></canvas><div class="ln"></div><div class="ph">${existing ? 'Нов подпис – тук' : 'Подпишете се тук'}</div>
+      <button type="button" class="pclr" data-pad="clear" hidden aria-label="Изчисти подписа">↺ Изчисти</button></div>
+    <button type="button" class="btn big ok" data-pad="done" hidden>✓ Готово</button>`;
   function sheet(inner) {
     const m = document.createElement('div'); m.className = 'menu';
     m.innerHTML = `<div class="sheet">${inner}</div>`;
@@ -1585,7 +1600,7 @@
         </div>
         <div class="mut" style="margin-top:8px">Един пълномощник може да представлява най-много трима собственици.</div>
       </div>
-      ${padHtml(status === 'Пълномощник' ? 'Подпис на пълномощника' : 'Подпис', sigs['u' + unitId])}
+      ${padHtml('Подпис', sigs['u' + unitId])}
       <div class="grid2" style="margin-top:4px"><div><label class="l">📧 Имейл</label><input id="k-em" type="email" inputmode="email" autocapitalize="none" value="${esc(contact.email || '')}" placeholder="за копие от протокола"></div>
       <div><label class="l">📞 Телефон</label><input id="k-tel" type="tel" inputmode="tel" value="${esc(contact.phone || u.phone || '')}" placeholder="08…"></div></div>
       <div class="mut" style="margin-top:4px">По закон протоколът се изпраща по имейл на тези, които са дали имейл.</div>
