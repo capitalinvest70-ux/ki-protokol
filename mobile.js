@@ -676,6 +676,30 @@
     }
   };
 
+  // Камерата на компютъра: жива картина и бутон „Снимай“. Връща снимката, null при отказ, undefined ако няма камера.
+  async function camShot() {
+    let stream;
+    try { stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment', width: { ideal: 1920 }, height: { ideal: 1080 } }, audio: false }); }
+    catch (e) { return undefined; }
+    return new Promise(res => {
+      const m = sheet(`<h2>📷 Снимка на пълномощното</h2>
+        <video autoplay playsinline muted style="width:100%;max-height:58vh;border-radius:16px;background:#000;display:block"></video>
+        <button class="btn big ok" data-x="shot">📸 Снимай</button><button class="btn out" data-x="no">Отказ</button>`);
+      const v = m.querySelector('video'); v.srcObject = stream;
+      let done = false;
+      const stop = () => stream.getTracks().forEach(t => t.stop());
+      const rm = m.remove; m.remove = () => { if (!done) { done = true; stop(); res(null); } rm(); };
+      m.querySelector('[data-x=no]').onclick = () => m.remove();
+      m.querySelector('[data-x=shot]').onclick = () => {
+        if (!v.videoWidth) { toast('Камерата още зарежда…', true); return; }
+        const sc = Math.min(1, 1600 / Math.max(v.videoWidth, v.videoHeight));
+        const c = document.createElement('canvas'); c.width = Math.round(v.videoWidth * sc); c.height = Math.round(v.videoHeight * sc);
+        c.getContext('2d').drawImage(v, 0, 0, c.width, c.height);
+        done = true; stop(); res(c.toDataURL('image/jpeg', 0.88)); rm();
+      };
+    });
+  }
+
   // Прозорец за въвеждане на текст (вместо prompt(), който не работи в програмата за компютър)
   function askText(title, label, placeholder, value) {
     return new Promise(res => {
@@ -1550,7 +1574,8 @@
         <label class="l">Пълномощно</label>
         <div class="seg" data-g="pt"><button class="${ptype === 'written' ? 'on' : ''}" data-v="written">Писмено</button><button class="${ptype === 'oral' ? 'on' : ''}" data-v="oral">Устно (на събранието)</button></div>
         <div id="k-pw" ${ptype === 'written' ? '' : 'hidden'}>
-          <label class="btn lite" style="cursor:pointer">📷 ${photo ? 'Смени снимката на пълномощното' : 'Снимай пълномощното'}<input id="k-pf" type="file" accept="image/*" capture="environment" hidden></label>
+          <label class="btn lite" id="k-pcam" style="cursor:pointer">📷 ${photo ? 'Снимай пълномощното отново' : 'Снимай пълномощното'}<input id="k-pf" type="file" accept="image/*" capture="environment" hidden></label>
+          <label class="btn out" style="cursor:pointer">🖼️ Избери снимка от ${DESK ? 'компютъра' : 'галерията'}<input id="k-pg" type="file" accept="image/*" hidden></label>
           ${photo ? `<img class="photo" id="k-pi" src="${photo.img}">` : '<img class="photo" id="k-pi" hidden>'}
           <div class="mut" style="margin-top:4px">По закон копие от писменото пълномощно се прилага към протокола.</div>
         </div>
@@ -1573,11 +1598,20 @@
         const n = m.querySelector('#k-an'); if (status === 'Пълномощник' && n.value === (u.owner_name || '')) { n.value = ''; n.focus(); } else if (status !== 'Пълномощник' && !n.value) n.value = u.owner_name || '';
       } else { ptype = b.dataset.v; m.querySelector('#k-pw').hidden = ptype !== 'written'; }
     });
-    m.querySelector('#k-pf').onchange = async e => {
-      const f = e.target.files && e.target.files[0]; if (!f) return;
-      try { photo = { img: await imgFromFile(f, 1600), at: stamp() }; const i = m.querySelector('#k-pi'); i.src = photo.img; i.hidden = false; }
-      catch (err) { toast('Снимката не се отвори', true); }
+    const showPhoto = img => { photo = { img, at: stamp() }; const i = m.querySelector('#k-pi'); i.src = img; i.hidden = false; toast('Снимката е сложена – натиснете „Запази“'); };
+    const onPick = async e => {
+      const f = e.target.files && e.target.files[0]; e.target.value = ''; if (!f) return;
+      try { showPhoto(await imgFromFile(f, 1600)); } catch (err) { toast('Снимката не се отвори', true); }
     };
+    m.querySelector('#k-pf').onchange = onPick;
+    m.querySelector('#k-pg').onchange = onPick;
+    // На компютъра няма „камера на телефона“ – пускаме камерата на компютъра в наш прозорец
+    if (DESK) m.querySelector('#k-pcam').addEventListener('click', async e => {
+      e.preventDefault();
+      const img = await camShot();
+      if (img === undefined) { toast('Не намирам камера на компютъра – изберете снимка от файл', true); m.querySelector('#k-pg').click(); }
+      else if (img) showPhoto(img);
+    });
     m.querySelector('[data-sh=cancel]').onclick = () => m.remove();
     const rm = m.querySelector('[data-sh=remove]');
     if (rm) rm.onclick = async () => { m.remove(); if (await removeAtt(mid, unitId)) render(true); };

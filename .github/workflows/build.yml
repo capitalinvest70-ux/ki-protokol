@@ -74,7 +74,7 @@ jobs:
           }
           GRADLE
           tail -12 android/app/build.gradle
-          sed -i 's#</manifest>#    <queries>\n        <intent><action android:name="android.intent.action.SEND" /><data android:mimeType="*/*" /></intent>\n        <intent><action android:name="android.speech.RecognitionService" /></intent>\n        <package android:name="com.viber.voip" />\n        <package android:name="com.google.android.gm" />\n        <package android:name="com.microsoft.office.outlook" />\n    </queries>\n</manifest>#' $M
+          sed -i 's#</manifest>#    <queries>\n        <intent><action android:name="android.intent.action.SEND" /><data android:mimeType="*/*" /></intent>\n        <intent><action android:name="android.speech.RecognitionService" /></intent>\n        <intent><action android:name="android.media.action.IMAGE_CAPTURE" /></intent>\n        <package android:name="com.viber.voip" />\n        <package android:name="com.google.android.gm" />\n        <package android:name="com.microsoft.office.outlook" />\n    </queries>\n</manifest>#' $M
           grep -n -A3 "<queries>" $M
           G=android/app/build.gradle
           sed -i "s/versionCode [0-9]*/versionCode ${{ github.run_number }}/; s/versionName \"[^\"]*\"/versionName \"$VER\"/" $G
