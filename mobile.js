@@ -676,6 +676,23 @@
     }
   };
 
+  // Прозорец за въвеждане на текст (вместо prompt(), който не работи в програмата за компютър)
+  function askText(title, label, placeholder, value) {
+    return new Promise(res => {
+      let done = false;
+      const m = sheet(`<h2>${esc(title)}</h2><label class="l">${esc(label)}</label>
+        <textarea class="k-ask" style="min-height:110px" placeholder="${esc(placeholder || '')}">${esc(value || '')}</textarea>
+        <button class="btn big ok" data-x="ok">✓ Добави</button><button class="btn out" data-x="no">Отказ</button>`);
+      const t = m.querySelector('.k-ask');
+      const fin = v => { if (done) return; done = true; res(v); m.remove(); };
+      const rm = m.remove; m.remove = () => { if (!done) { done = true; res(null); } rm(); };
+      m.querySelector('[data-x=ok]').onclick = () => { const v = t.value.trim(); if (!v) { toast('Напишете заглавие', true); t.focus(); return; } fin(v); };
+      m.querySelector('[data-x=no]').onclick = () => fin(null);
+      t.addEventListener('keydown', e => { if (e.key === 'Enter' && (e.ctrlKey || !e.shiftKey) && DESK) { e.preventDefault(); m.querySelector('[data-x=ok]').click(); } });
+      setTimeout(() => t.focus(), 380);
+    });
+  }
+
   /* ---------- ✨ Редакция на текста (същата като в пълната версия на програмата) ---------- */
   const AI_MODES = [['edit', '✨ Редактирай'], ['professional', '🧾 Професионално'], ['short', '✂️ Кратко и ясно']];
   function decorateAi(box) {
@@ -2476,7 +2493,7 @@
       render(true);
     },
     addPoint: async () => {
-      const mid = curMid(); const title = prompt('Заглавие на новата точка:'); if (!title || !title.trim()) return;
+      const mid = curMid(); const title = await askText('➕ Нова точка', 'Заглавие на точката', 'напр. Смяна на входната врата'); if (!title || !title.trim()) return;
       const r = await run('Добавям…', async () => { const x = await post(`/api/meetings/${mid}/agenda-items`, { title: title.trim() }); await loadMeeting(mid, true); return x; });
       if (r && r.id) go(`#/m/${mid}/p/${r.id}`); else render(true);
     },
