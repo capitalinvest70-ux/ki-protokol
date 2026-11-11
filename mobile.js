@@ -1543,15 +1543,19 @@
     return m;
   }
   const stamp = () => { const d = new Date(); return `${bgDate(isoOf(d))} ${nowHm()}`; };
+  // Снимката се чете без blob: адрес – защитата на програмата (CSP) не го позволява
   async function imgFromFile(file, max) {
-    const url = URL.createObjectURL(file);
-    try {
-      const im = await new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = rej; i.src = url; });
-      const s = Math.min(1, (max || 1600) / Math.max(im.width, im.height));
-      const c = document.createElement('canvas'); c.width = Math.round(im.width * s); c.height = Math.round(im.height * s);
-      c.getContext('2d').drawImage(im, 0, 0, c.width, c.height);
-      return c.toDataURL('image/jpeg', 0.82);
-    } finally { URL.revokeObjectURL(url); }
+    let im = null;
+    try { if (window.createImageBitmap) im = await createImageBitmap(file, { imageOrientation: 'from-image' }); } catch (e) { im = null; }
+    if (!im) {
+      const data = await new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(r.result); r.onerror = () => rej(r.error); r.readAsDataURL(file); });
+      im = await new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = () => rej(new Error('bad image')); i.src = data; });
+    }
+    const s = Math.min(1, (max || 1600) / Math.max(im.width, im.height));
+    const c = document.createElement('canvas'); c.width = Math.round(im.width * s); c.height = Math.round(im.height * s);
+    c.getContext('2d').drawImage(im, 0, 0, c.width, c.height);
+    if (im.close) im.close();
+    return c.toDataURL('image/jpeg', 0.82);
   }
 
   async function openAttSheet(unitId) {
