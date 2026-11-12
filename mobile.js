@@ -451,6 +451,19 @@
   #kim .menu .sheet.haspad { -webkit-backdrop-filter:none; backdrop-filter:none; background:#f5f8fe; }
   #kim .menu .sheet.haspad .card { background:#fff; }
   #kim .padw canvas { will-change:contents; }
+  /* подписване: на цял екран, жълто и голямо поле */
+  #kim .menu.haspad { align-items:stretch; justify-content:stretch; padding:0; }
+  #kim .menu .sheet.haspad { width:100% !important; max-width:none !important; height:100% !important; max-height:none !important; border-radius:0 !important; border:0;
+    margin:0 !important; padding:calc(18px + env(safe-area-inset-top, 0px)) clamp(14px, 4vw, 44px) 28px; overflow-y:auto; animation:kimfull .3s var(--ease, ease-out) both !important; }
+  #kim .menu .sheet.haspad::before { display:none; }
+  @keyframes kimfull { from { opacity:0; transform:translateY(24px); } }
+  #kim .menu .sheet.haspad .padw { background:#fff6b8; border:2.5px solid #e9b400; box-shadow:inset 0 2px 10px rgba(160,120,0,.12), 0 6px 18px rgba(233,180,0,.22); }
+  #kim .menu .sheet.haspad .padw.ink { border-color:#2e9e45; box-shadow:inset 0 2px 10px rgba(160,120,0,.1), 0 0 0 4px rgba(46,158,69,.18); }
+  #kim .menu .sheet.haspad .padw canvas { height:clamp(280px, 48vh, 560px) !important; }
+  #kim .menu .sheet.haspad .padw .ln { border-bottom-color:#c99a00; bottom:22%; }
+  #kim .menu .sheet.haspad .padw .ln::before { color:#b88a00; font-size:1.4em; }
+  #kim .menu .sheet.haspad .padw .ph { color:#a98200; font-size:1.3em; bottom:calc(22% + 18px); }
+  #kim .menu .sheet.haspad .padw .pclr { background:#fff; box-shadow:0 2px 8px rgba(0,0,0,.12); }
   #kim .sigok .dyn { display:block; font-weight:500; color:#3d6a52; font-size:.8em; margin-top:2px; }
   /* вход: докато се пише, остава само картата с полетата и бутонът „Вход“ се вижда */
   #kim.kbd .login .hero, #kim.kbd .login .icons4 { display:none; }
