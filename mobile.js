@@ -364,6 +364,11 @@
   #kim .menu .sheet.haspad .card { background:#fff; }
   #kim .padw canvas { will-change:contents; }
   #kim .sigok .dyn { display:block; font-weight:500; color:#3d6a52; font-size:.8em; margin-top:2px; }
+  /* вход: докато се пише, остава само картата с полетата и бутонът „Вход“ се вижда */
+  #kim.kbd .login .hero, #kim.kbd .login .icons4 { display:none; }
+  #kim.kbd .login { margin-top:0; display:block; max-width:680px; }
+  #kim .errbox { margin-top:12px; padding:12px 14px; border-radius:14px; background:#fdecea; color:#a32018; font-weight:600; }
+  #kim.desk.wide .login .card { order:-1; }
   /* долните раздели не растат с буквите – да се събират и 5-те на тесен телефон */
   #kim:not(.wide) .tabs button { flex:1 1 0; min-width:0; font-size:11px; letter-spacing:-.01em; line-height:1.15; padding-left:2px; padding-right:2px; overflow:hidden; }
   #kim:not(.wide) .tabs button b { font-size:20px; }
@@ -1204,21 +1209,34 @@
     html(`<div class="login">${heroHtml(`${wordmark()}<div class="script" style="margin-top:10px">Инвестираме в хората.</div>`,
         '<span>Прозрачност</span><span>Професионализъм</span><span>Доверие</span><span>Резултати</span>')}
       <div class="icons4"><div><i class="i1">🏠</i>Управление<br>на имоти</div><div><i class="i2">🌿</i>Поддръжка<br>и грижа</div><div><i class="i3">📈</i>Стабилни<br>инвестиции</div><div><i class="i4">👥</i>Доволни<br>съседи</div></div>
-      <div class="card"><h2>🔐 Вход в Протоколи</h2><label class="l">Потребител</label><input id="k-u" autocomplete="username" autocapitalize="none" value="${esc(LS.get('user', ''))}">
-      <label class="l">Парола</label><input id="k-p" type="password" autocomplete="current-password">
-      <button class="btn big" data-act="login">Вход</button><p class="mut" id="k-le" style="color:var(--bad)"></p></div></div>`);
+      <div class="card"><h2>🔐 Вход в Протоколи</h2><label class="l">Потребител</label><input id="k-u" autocomplete="username" autocapitalize="none" autocorrect="off" spellcheck="false" enterkeyhint="next" value="${esc(LS.get('user', ''))}">
+      <label class="l">Парола</label><input id="k-p" type="password" autocomplete="current-password" autocapitalize="none" autocorrect="off" spellcheck="false" enterkeyhint="go">
+      <label class="row" style="margin-top:10px;gap:10px;cursor:pointer"><input type="checkbox" id="k-show" style="width:26px;height:26px;min-height:0;flex:none"> <span>Покажи паролата</span></label>
+      <div id="k-le" class="errbox" hidden></div>
+      <button class="btn big" data-act="login">Вход</button></div></div>`);
+    const lu = root.querySelector('#k-u'), lp = root.querySelector('#k-p');
+    root.querySelector('#k-show').onchange = e => { lp.type = e.target.checked ? 'text' : 'password'; };
+    lu.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); lp.focus(); } });
+    lp.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); doLogin(); } });
+    lp.addEventListener('focus', () => setTimeout(() => { try { root.querySelector('[data-act=login]').scrollIntoView({ block: 'end', behavior: 'smooth' }); } catch (e) {} }, 500));
     setTimeout(() => (root.querySelector('#k-u').value ? root.querySelector('#k-p') : root.querySelector('#k-u')).focus(), 50);
   }
   async function doLogin() {
     const u = root.querySelector('#k-u').value.trim(), pw = root.querySelector('#k-p').value;
-    const er = root.querySelector('#k-le'); er.textContent = '';
+    const er = root.querySelector('#k-le'); er.textContent = ''; er.hidden = true;
+    if (!u || !pw) { er.textContent = 'Въведете потребител и парола'; er.hidden = false; return; }
+    try { if (document.activeElement) document.activeElement.blur(); } catch (e) {}
     busy(true, 'Влизам…');
     try {
       const r = await post('/api/auth/login', { username: u, password: pw });
       LS.set('user', u); D.user = r.user || { display_name: u };
       try { if (typeof state !== 'undefined') state.currentUser = r.user; } catch (e) {}
       go('#/', true);
-    } catch (e) { er.textContent = e.message || 'Грешно име или парола'; }
+    } catch (e) {
+      const msg = /fetch|network|Failed/i.test(e.message || '') ? 'Няма връзка с интернет или програмата не отговаря. Проверете интернета на устройството.' : (e.message || 'Грешно име или парола');
+      er.textContent = '⚠️ ' + msg + (/парол|име|потребител|401|invalid/i.test(msg) ? ' Проверете главни/малки букви – отметнете „Покажи паролата“.' : '');
+      er.hidden = false; try { er.scrollIntoView({ block: 'center' }); } catch (x) {}
+    }
     finally { busy(false); }
   }
 
@@ -2752,7 +2770,7 @@
     if (e.target.classList && e.target.classList.contains('k-fb')) { const b = e.target.closest('.k-fee').querySelector('.k-ffl'); if (b) b.hidden = e.target.value !== 'floor'; else if (e.target.value === 'floor') toast('По етажи – запиши и отвори отново, за да зададеш процентите'); }
   });
   root.addEventListener('focusout', e => { if (e.target.classList && e.target.classList.contains('k-ag') && agT) saveAg(); });
-  root.addEventListener('keydown', e => { if (e.key === 'Enter' && (e.target.id === 'k-p' || e.target.id === 'k-u')) { e.preventDefault(); doLogin(); } });
+
   window.addEventListener('beforeunload', () => { if (agT) saveAg(); });
 
   render();
