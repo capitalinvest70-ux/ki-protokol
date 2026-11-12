@@ -459,7 +459,28 @@
   @keyframes kimfull { from { opacity:0; transform:translateY(24px); } }
   #kim .menu .sheet.haspad .padw { background:#fff6b8; border:2.5px solid #e9b400; box-shadow:inset 0 2px 10px rgba(160,120,0,.12), 0 6px 18px rgba(233,180,0,.22); }
   #kim .menu .sheet.haspad .padw.ink { border-color:#2e9e45; box-shadow:inset 0 2px 10px rgba(160,120,0,.1), 0 0 0 4px rgba(46,158,69,.18); }
-  #kim .menu .sheet.haspad .padw canvas { height:clamp(280px, 48vh, 560px) !important; }
+  #kim .menu .sheet.haspad .padw canvas { height:150px !important; }
+  #kim .padw:not(.full) { cursor:pointer; }
+  #kim .padw .pfh, #kim .padw .pff { display:none; }
+  /* екранът за подписване: точно колкото екрана, нищо не се мести и не се плъзга */
+  #kim .menu > .padw.full { background:#fff6b8; position:fixed; left:0; top:0; right:0; bottom:0; width:100vw; height:100vh; height:100dvh; z-index:80; margin:0; border:0; border-radius:0; box-shadow:none;
+    display:flex; flex-direction:column; padding:env(safe-area-inset-top, 0px) 0 env(safe-area-inset-bottom, 0px); box-sizing:border-box; touch-action:none; overscroll-behavior:none;
+    -webkit-user-select:none; user-select:none; animation:kimpf .2s ease-out both; }
+  @keyframes kimpf { from { opacity:0; } }
+  #kim .padw.full .pfh { display:flex; align-items:center; gap:12px; flex:none; padding:10px 12px 10px 18px; background:#0b2a5b; color:#fff; }
+  #kim .padw.full .pfh .grow { min-width:0; flex:1; }
+  #kim .padw.full .pfh b { display:block; font-size:1.05em; }
+  #kim .padw.full .pfh span { display:block; opacity:.82; font-size:.82em; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  #kim .padw.full .pfx { flex:none; width:50px; height:50px; border-radius:50%; border:0; background:rgba(255,255,255,.16); color:#fff; font-size:1.2em; font-weight:700; }
+  #kim .menu > .padw.full canvas { flex:1 1 0; min-height:0; height:0 !important; width:100%; }
+  #kim .padw.full .pff { display:flex; gap:12px; flex:none; align-items:stretch; padding:10px 14px 12px; background:#fff; border-top:2.5px solid #e9b400; }
+  #kim .padw.full .pff .btn { margin:0; }
+  #kim .padw.full .pff [data-pf=clear] { flex:0 0 auto; width:auto; padding:0 20px; }
+  #kim .padw.full .pff [data-pf=done] { flex:1 1 auto; width:auto; }
+  #kim .menu > .padw.full .pclr { display:none; }
+  #kim .menu > .padw.full .ln::before { color:#b88a00; font-size:1.4em; }
+  #kim .menu > .padw.full .ln { border-bottom-color:#c99a00; bottom:calc(96px + 20%); left:6%; right:6%; }
+  #kim .menu > .padw.full .ph { color:#a98200; bottom:calc(118px + 20%); font-size:1.5em; }
   #kim .menu .sheet.haspad .padw .ln { border-bottom-color:#c99a00; bottom:22%; }
   #kim .menu .sheet.haspad .padw .ln::before { color:#b88a00; font-size:1.4em; }
   #kim .menu .sheet.haspad .padw .ph { color:#a98200; font-size:1.3em; bottom:calc(22% + 18px); }
@@ -1689,58 +1710,119 @@
   function sigPad(el) {
     const cv = el.querySelector('canvas'), ph = el.querySelector('.ph');
     const clr = el.querySelector('[data-pad=clear]'), sh = el.closest('.sheet');
-    // „Готово“ излиза след подписа и прави същото като големия бутон за запис (само когато в прозореца има един подпис)
+    // „Готово“ прави същото като големия бутон за запис (само когато в прозореца има един подпис)
     const saveB = sh && sh.querySelectorAll('.padw').length === 1 ? sh.querySelector('[data-sh=save], [data-x=save]') : null;
-    const doneB = saveB && el.nextElementSibling && el.nextElementSibling.matches('[data-pad=done]') ? el.nextElementSibling : null;
-    if (doneB) doneB.onclick = () => saveB.click();
-    let shown = false;
-    const mark = on => {
-      el.classList.toggle('ink', on); if (clr) clr.hidden = !on;
-      if (doneB) { doneB.hidden = !on; if (on && !shown) setTimeout(() => { try { doneB.scrollIntoView({ block: 'nearest', behavior: 'smooth' }); } catch (e) {} }, 60); }
-      shown = on;
-    };
+    if (el.nextElementSibling && el.nextElementSibling.matches('[data-pad=done]')) el.nextElementSibling.remove();
     if (sh) { sh.classList.add('haspad'); if (sh.parentElement) sh.parentElement.classList.add('haspad'); }
+    // Подписва се на отделен екран, който не мърда: горе име, в средата жълтото поле, долу „Изчисти“ и „Готово“
+    let lab = el.previousElementSibling; while (lab && !lab.matches('label.l')) lab = lab.previousElementSibling;
+    const h2 = sh && sh.querySelector('h2');
+    const head = document.createElement('div'); head.className = 'pfh';
+    head.innerHTML = `<div class="grow"><b>${esc(lab ? lab.textContent : '✍️ Подпис')}</b><span>${esc(h2 ? h2.textContent.replace(/^✍️\s*/, '') : '')}</span></div><button type="button" class="pfx" aria-label="Назад">✕</button>`;
+    const foot = document.createElement('div'); foot.className = 'pff';
+    foot.innerHTML = '<button type="button" class="btn out" data-pf="clear">↺ Изчисти</button><button type="button" class="btn big ok" data-pf="done">✓ Готово</button>';
+    el.insertBefore(head, cv); el.appendChild(foot);
     const dpr = Math.min(2, Math.max(1, window.devicePixelRatio || 1));   // над 2 само бави
-    const fit = () => { const r = cv.getBoundingClientRect(); cv.width = Math.round(r.width * dpr); cv.height = Math.round(r.height * dpr); };
-    fit();
     const g = cv.getContext('2d', { desynchronized: true }) || cv.getContext('2d');
-    g.lineCap = 'round'; g.lineJoin = 'round'; g.strokeStyle = '#0a1f6b'; g.fillStyle = '#0a1f6b'; g.lineWidth = 2.6 * dpr;
-    let drawing = false, last = null, mid = null, ink = false, box = [1e9, 1e9, -1, -1], rect = null, scrolled = false;
-    // как е направен подписът: всяка черта е списък от точки [x, y, милисекунди от началото, натиск]
-    let strokes = [], cur = null, t0 = 0;
-    const grow = (x, y) => { if (x < box[0]) box[0] = x; if (y < box[1]) box[1] = y; if (x > box[2]) box[2] = x; if (y > box[3]) box[3] = y; };
-    const add = e => {
-      const x = (e.clientX - rect.left) * dpr, y = (e.clientY - rect.top) * dpr;
-      if (cur) cur.push([Math.round(e.clientX - rect.left), Math.round(e.clientY - rect.top), Math.round((e.timeStamp || performance.now()) - t0), Math.round((e.pressure || 0) * 100) / 100]);
-      grow(x, y); return [x, y];
+    const LW = 2.6, INK = '#0a1f6b', r1 = v => Math.round(v * 10) / 10;
+    // всяка черта е списък от точки [x, y, милисекунди от началото, натиск]; w0×h0 е размерът на полето, в което е писано
+    let strokes = [], t0 = 0, w0 = 0, h0 = 0, cw = 0, ch = 0, T = { s: 1, ox: 0, oy: 0 }, rect = null, full = false;
+    const paint = (c, st, f) => {
+      if (!st.length) return; const a = f(st[0]);
+      c.beginPath(); c.arc(a[0], a[1], c.lineWidth / 2, 0, 7); c.fill();
+      if (st.length < 2) return;
+      c.beginPath(); c.moveTo(a[0], a[1]); let l = a;
+      for (let i = 1; i < st.length; i++) { const q = f(st[i]); c.quadraticCurveTo(l[0], l[1], (l[0] + q[0]) / 2, (l[1] + q[1]) / 2); l = q; }
+      c.lineTo(l[0], l[1]); c.stroke();
+    };
+    const ui = () => { const on = strokes.length > 0; if (ph) ph.hidden = on; el.classList.toggle('ink', on); if (clr) clr.hidden = !on; };
+    const redraw = () => {
+      g.clearRect(0, 0, cv.width, cv.height);
+      g.lineCap = 'round'; g.lineJoin = 'round'; g.strokeStyle = INK; g.fillStyle = INK; g.lineWidth = LW * dpr * Math.max(.5, T.s);
+      for (const st of strokes) paint(g, st, q => [(q[0] * T.s + T.ox) * dpr, (q[1] * T.s + T.oy) * dpr]);
+      ui();
+    };
+    const setup = () => {
+      const r = cv.getBoundingClientRect(); if (!r.width || !r.height) return;
+      rect = r; cw = r.width; ch = r.height; cv.width = Math.round(cw * dpr); cv.height = Math.round(ch * dpr);
+      if (strokes.length) { const k = Math.min(cw / w0, ch / h0); T = { s: k, ox: (cw - w0 * k) / 2, oy: (ch - h0 * k) / 2 }; }
+      else { w0 = cw; h0 = ch; T = { s: 1, ox: 0, oy: 0 }; }
+      redraw();
+    };
+    setup();
+    if (window.ResizeObserver) new ResizeObserver(() => { const r = cv.getBoundingClientRect(); if (act == null && r.width && (Math.abs(r.width - cw) > 1 || Math.abs(r.height - ch) > 1)) setup(); }).observe(cv);
+    // Длан върху екрана: рисува само едно докосване. Това, което стои на място или е по-голямо петно, е длан и не оставя следа.
+    const P = new Map(); let act = null, pen = false, lastEnd = 0, last = null, mid = null;
+    const dropSt = st => { const i = strokes.indexOf(st); if (i >= 0) strokes.splice(i, 1); if (!strokes.length) { w0 = cw; h0 = ch; T = { s: 1, ox: 0, oy: 0 }; } redraw(); };
+    const add = (e, p) => {
+      const cx = e.clientX - rect.left, cy = e.clientY - rect.top, n = p.st.length;
+      if (n) p.len += Math.hypot(cx - p.x, cy - p.y);
+      p.x = cx; p.y = cy;
+      if (p.touch) { const z = Math.max(e.width || 0, e.height || 0); if (z > p.big) p.big = z; }
+      p.st.push([r1((cx - T.ox) / T.s), r1((cy - T.oy) / T.s), Math.round((e.timeStamp || performance.now()) - t0), Math.round((e.pressure || 0) * 100) / 100]);
+      return [cx * dpr, cy * dpr];
     };
     cv.addEventListener('pointerdown', e => {
+      if (!full) return;
       e.preventDefault(); try { cv.setPointerCapture(e.pointerId); } catch (x) {}
-      rect = cv.getBoundingClientRect(); drawing = true;
-      if (!strokes.length) t0 = e.timeStamp || performance.now();
-      cur = []; strokes.push(cur);
-      last = add(e); mid = last;
+      rect = cv.getBoundingClientRect();
+      const touch = e.pointerType === 'touch', sz = touch ? Math.max(e.width || 0, e.height || 0) : 0, now = e.timeStamp || performance.now();
+      if (e.pointerType === 'pen') pen = true;
+      if (touch && (pen || sz > 120)) { P.set(e.pointerId, { palm: true }); return; }   // пише се с писалка или петното е огромно
+      if (act != null) {
+        const a = P.get(act), dur = now - a.t, cy = e.clientY - rect.top; let newPalm;
+        if (!touch && a.touch) newPalm = false;
+        else if (sz > 0 && a.big > 0 && Math.max(sz, a.big) > 30 && Math.max(sz, a.big) >= 1.5 * Math.min(sz, a.big)) newPalm = sz > a.big;   // по-голямото петно е дланта
+        else if (a.len >= 14 && !(a.len < 60 && dur > 300 && a.len / dur < .04)) newPalm = true;   // първото вече пише – второто е длан
+        else newPalm = dur < 150 && cy > a.y + 50;   // първото стои на място – то е дланта (освен ако новото е доста по-долу)
+        if (newPalm) { P.set(e.pointerId, { palm: true }); return; }
+        a.palm = true; act = null; dropSt(a.st);
+      }
+      if (!strokes.length) t0 = now;
+      const p = { st: [], len: 0, big: sz, t: now, x: 0, y: 0, touch, palm: false };
+      strokes.push(p.st); P.set(e.pointerId, p); act = e.pointerId;
+      last = add(e, p); mid = last;
       g.beginPath(); g.arc(last[0], last[1], g.lineWidth / 2, 0, 7); g.fill();
-      if (!ink) { ink = true; if (ph) ph.hidden = true; el.classList.add('ink'); }
+      if (ph) ph.hidden = true; el.classList.add('ink');
     });
     cv.addEventListener('pointermove', e => {
-      if (!drawing) return; e.preventDefault();
+      const p = P.get(e.pointerId); if (!p || p.palm || e.pointerId !== act) return; e.preventDefault();
       const evs = e.getCoalescedEvents ? e.getCoalescedEvents() : null;
       const list = evs && evs.length ? evs : [e];
       g.beginPath(); g.moveTo(mid[0], mid[1]);
       for (const ev of list) {
-        const p = add(ev), m2 = [(last[0] + p[0]) / 2, (last[1] + p[1]) / 2];
+        const q = add(ev, p), m2 = [(last[0] + q[0]) / 2, (last[1] + q[1]) / 2];
         g.quadraticCurveTo(last[0], last[1], m2[0], m2[1]);   // гладка линия през средите
-        last = p; mid = m2;
+        last = q; mid = m2;
       }
       g.stroke();
     });
-    const end = () => {
-      if (!drawing) return; drawing = false;
+    const end = cancel => e => {
+      const p = P.get(e.pointerId); P.delete(e.pointerId);
+      if (!p || p.palm || e.pointerId !== act) return;
+      act = null; lastEnd = performance.now();
       g.beginPath(); g.moveTo(mid[0], mid[1]); g.lineTo(last[0], last[1]); g.stroke();
-      mark(true);   // бутоните се показват след чертата, не по време на писане
+      const dur = (e.timeStamp || performance.now()) - p.t;
+      // телефонът сам е познал длан, или нещо е стояло неподвижно на екрана – не е част от подписа
+      if ((cancel && p.len < 40) || (p.touch && p.len < 6 && dur > 700)) dropSt(p.st); else ui();
     };
-    cv.addEventListener('pointerup', end); cv.addEventListener('pointercancel', end);
+    cv.addEventListener('pointerup', end(false)); cv.addEventListener('pointercancel', end(true));
+    // големият екран се закача направо за тъмния фон – така стои точно върху екрана, дори прозорецът отдолу да е превъртян
+    const menu = sh && sh.parentElement, holder = document.createComment('pad');
+    const open = () => { if (full) return; full = true; if (menu) { el.before(holder); menu.appendChild(el); } el.classList.add('full'); setup(); };
+    const close = () => { if (!full) return; full = false; el.classList.remove('full'); if (holder.parentNode) holder.replaceWith(el); P.clear(); act = null; setup(); };
+    const clear = () => { strokes = []; P.forEach(p => { p.palm = true; }); act = null; w0 = cw; h0 = ch; T = { s: 1, ox: 0, oy: 0 }; redraw(); };
+    // докато се пише (и миг след това) бутоните не реагират – дланта да не натисне „Готово“ или „Изчисти“
+    const calm = () => act == null && performance.now() - lastEnd > 300;
+    el.addEventListener('click', e => {
+      if (!full) { if (!e.target.closest('[data-pad=clear]')) open(); return; }
+      if (e.target.closest('.pfx')) { if (calm()) close(); return; }
+      const b = e.target.closest('[data-pf]'); if (!b || !calm()) return;
+      if (b.dataset.pf === 'clear') clear();
+      else { const has = strokes.length > 0; close(); if (has && saveB) saveB.click(); }
+    });
+    // прозорец само за подпис (без други полета) – направо се отваря големият екран
+    if (sh && saveB && !sh.querySelector('input, select, textarea, .seg')) requestAnimationFrame(open);
     const dyn = () => {
       if (!strokes.length) return null;
       let len = 0, pts = 0, draw = 0, vmax = 0;
@@ -1750,18 +1832,19 @@
       }
       const lastSt = strokes[strokes.length - 1], total = lastSt.length ? lastSt[lastSt.length - 1][2] : 0;
       return { v: 1, ms: total, drawMs: draw, strokes: strokes.length, points: pts, len: Math.round(len), speed: draw > 0 ? Math.round(len / draw * 1000) : 0, maxSpeed: Math.round(vmax * 1000),
-        w: Math.round(rect ? rect.width : 0), h: Math.round(rect ? rect.height : 0), device: (navigator.userAgent.match(/Android [^;)]+; [^;)]+/) || [navigator.platform || ''])[0], data: strokes };
+        w: Math.round(w0), h: Math.round(h0), device: (navigator.userAgent.match(/Android [^;)]+; [^;)]+/) || [navigator.platform || ''])[0], data: strokes };
     };
     return {
-      has: () => ink,
-      clear() { g.clearRect(0, 0, cv.width, cv.height); ink = false; box = [1e9, 1e9, -1, -1]; strokes = []; cur = null; if (ph) ph.hidden = false; mark(false); },
-      dyn,
+      has: () => strokes.length > 0,
+      clear, dyn, open, close,
       png() {
-        if (!ink) return null;
-        const m = 8 * dpr, x = Math.max(0, box[0] - m), y = Math.max(0, box[1] - m), w = Math.min(cv.width, box[2] + m) - x, h = Math.min(cv.height, box[3] + m) - y;
-        const scale = Math.min(1, 520 / w, 180 / h);
-        const o = document.createElement('canvas'); o.width = Math.max(1, Math.round(w * scale)); o.height = Math.max(1, Math.round(h * scale));
-        o.getContext('2d').drawImage(cv, x, y, w, h, 0, 0, o.width, o.height);
+        if (!strokes.length) return null;
+        let x0 = 1e9, y0 = 1e9, x1 = -1e9, y1 = -1e9;
+        for (const st of strokes) for (const q of st) { if (q[0] < x0) x0 = q[0]; if (q[1] < y0) y0 = q[1]; if (q[0] > x1) x1 = q[0]; if (q[1] > y1) y1 = q[1]; }
+        x0 -= 8; y0 -= 8; const w = x1 + 8 - x0, h = y1 + 8 - y0, k = Math.min(2, 520 / w, 180 / h);
+        const o = document.createElement('canvas'); o.width = Math.max(1, Math.round(w * k)); o.height = Math.max(1, Math.round(h * k));
+        const c = o.getContext('2d'); c.lineCap = 'round'; c.lineJoin = 'round'; c.strokeStyle = INK; c.fillStyle = INK; c.lineWidth = Math.max(2.4, LW * k);
+        for (const st of strokes) paint(c, st, q => [(q[0] - x0) * k, (q[1] - y0) * k]);
         const img = o.toDataURL('image/png');
         const dy = dyn(); if (dy) sigDyn.set(img, dy);   // пази се заедно с подписа (виж putSig)
         return img;
