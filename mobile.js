@@ -352,6 +352,9 @@
   #kim .tabs { position:absolute; left:0; right:0; bottom:0; z-index:5; background:rgba(255,255,255,.7);
     -webkit-backdrop-filter:blur(22px) saturate(180%); backdrop-filter:blur(22px) saturate(180%); border-top:1px solid rgba(255,255,255,.75); }
   #kim .tabs[hidden], #kim.kbd .tabs { display:none; }
+  /* долните раздели не растат с буквите – да се събират и 5-те на тесен телефон */
+  #kim:not(.wide) .tabs button { flex:1 1 0; min-width:0; font-size:11px; letter-spacing:-.01em; line-height:1.15; padding-left:2px; padding-right:2px; overflow:hidden; }
+  #kim:not(.wide) .tabs button b { font-size:20px; }
   #kim .dock { position:absolute; left:0; right:0; bottom:var(--tabh,0px); z-index:4; display:flex; gap:8px; padding:8px 12px;
     background:rgba(250,252,255,.96); -webkit-backdrop-filter:blur(22px) saturate(180%); backdrop-filter:blur(22px) saturate(180%);
     border-top:1px solid rgba(13,45,107,.1); box-shadow:0 -6px 18px rgba(13,45,107,.07); }
@@ -515,8 +518,9 @@
   document.body.appendChild(root);
   const $top = root.querySelector('.top'), $main = root.querySelector('.main'), $tabs = root.querySelector('.tabs'), $toast = root.querySelector('.toast'), $dock = root.querySelector('.dock');
   const setDock = h => { $dock.innerHTML = h || ''; $dock.hidden = !h; if (typeof setBars === 'function') try { setBars(); } catch (e) {} };
-  const setFs = v => { v = Math.max(15, Math.min(26, v)); LS.set('fs', v); root.style.setProperty('--fs', v + 'px'); return v; };
-  setFs(LS.get('fs', DESK ? 21 : 18));
+  const FS_DEF = DESK ? 21 : 22;
+  const setFs = v => { v = Math.max(15, Math.min(30, v)); LS.set('fs2', v); root.style.setProperty('--fs', v + 'px'); return v; };
+  setFs(LS.get('fs2', FS_DEF));
 
   let toastT;
   function toast(msg, err) {
@@ -1216,7 +1220,43 @@
       <div class="search"><input id="k-q" type="search" placeholder="🔎 Търси вход или адрес…" value="${esc(q)}"></div>
       ${rec.length && !q ? `<h3>Последно отваряни</h3>${rec.map(bItem).join('')}<h3>Всички входове (${list.length})</h3>` : ''}
       ${q ? '' : '<div class="hint">↕️ Задръж вход и го плъзни, за да го преместиш</div>'}
-      <div id="k-bl">${bList(list, q)}</div>`, keep);
+      <div id="k-bl">${bList(list, q)}</div>
+      ${q ? '' : '<button class="btn out" data-act="newBuilding" style="margin-top:14px">➕ Нова етажна собственост</button>'}`, keep);
+  }
+
+  // Нова етажна собственост: един вход, еднакъв брой апартаменти на етаж (няколко входа – в пълната версия)
+  function newBuildingSheet() {
+    let elev = true;
+    const m = sheet(`<h2>➕ Нова етажна собственост</h2>
+      <label class="l">Име (кратко)</label><input id="nb-name" placeholder="напр. Абритус 23 вход А" autocomplete="off">
+      <label class="l">Адрес</label><input id="nb-addr" placeholder="гр. Разград, ул. …" autocomplete="off">
+      <label class="l">Идентификатор (ако го знаете)</label><input id="nb-id" placeholder="61710.502…" autocomplete="off">
+      <div class="grid2"><div><label class="l">Етажи</label><input id="nb-fl" type="number" inputmode="numeric" min="1" max="40" value="5"></div>
+      <div><label class="l">Апартаменти на етаж</label><input id="nb-pf" type="number" inputmode="numeric" min="1" max="30" value="3"></div></div>
+      <div class="grid2"><div><label class="l">Първият апартамент е №</label><input id="nb-st" type="number" inputmode="numeric" min="1" value="1"></div>
+      <div><label class="l">Асансьор</label><div class="seg" id="nb-el"><button class="on" data-v="1">Има</button><button data-v="0">Няма</button></div></div></div>
+      <div class="okbox" id="nb-sum" style="margin-top:12px"></div>
+      <div class="mut" style="margin-top:6px">Имената на собствениците и идеалните части се попълват после в „Хора и такси“. Блок с няколко входа се създава от пълната версия.</div>
+      <button class="btn big ok" data-x="ok">✓ Създай</button><button class="btn out" data-x="no">Отказ</button>`);
+    const v = id => m.querySelector(id).value.trim(), n = id => Math.max(0, Math.round(Number(m.querySelector(id).value) || 0));
+    const sum = () => { const fl = n('#nb-fl'), pf = n('#nb-pf'), st = Math.max(1, n('#nb-st')); m.querySelector('#nb-sum').textContent = fl && pf ? `Ще се създадат ${fl * pf} апартамента: от №${st} до №${st + fl * pf - 1}` : 'Въведете етажи и апартаменти на етаж'; };
+    m.querySelectorAll('#nb-fl, #nb-pf, #nb-st').forEach(i => i.addEventListener('input', sum)); sum();
+    m.querySelectorAll('#nb-el button').forEach(b => b.onclick = () => { elev = b.dataset.v === '1'; m.querySelectorAll('#nb-el button').forEach(x => x.classList.toggle('on', x === b)); });
+    m.querySelector('[data-x=no]').onclick = () => m.remove();
+    m.querySelector('[data-x=ok]').onclick = async () => {
+      const name = v('#nb-name'), fl = n('#nb-fl'), pf = n('#nb-pf'), st = Math.max(1, n('#nb-st'));
+      if (!name) { m.querySelector('#nb-name').classList.add('need'); m.querySelector('#nb-name').focus(); toast('Въведете име', true); return; }
+      if (!fl || !pf) { toast('Въведете етажи и апартаменти на етаж', true); return; }
+      if (fl * pf > 400) { toast('Твърде много апартаменти – проверете числата', true); return; }
+      const body = { name, address: v('#nb-addr'), identifier: v('#nb-id'), floors: fl, units_per_floor: pf, distribution_mode: 'equal', single_start_no: st,
+        floor_counts: Array.from({ length: fl }, (_, i) => ({ floor: i + 1, count: pf })), entrance_mode: 'single', entrances: [],
+        next_meeting_number: 1, has_elevator: elev, has_common_rooms: false, common_rooms_count: 0 };
+      const r = await run('Създавам…', () => post('/api/buildings', body));
+      if (!r) return;
+      D.buildings = null; D.all = null; m.remove();
+      success('Етажната собственост е създадена');
+      if (r.id) go('#/b/' + r.id); else render(true);
+    };
   }
   const bItem = b => `<button class="item" data-id="${b.id}" data-go="#/b/${b.id}"><div class="grow"><div class="ttl">${esc(b.name)}</div><div class="mut">${esc(b.address || '')}</div></div><span class="arr">›</span></button>`;
   function bList(list, q) {
@@ -2352,7 +2392,8 @@
     closeMenu: el => el.closest('.menu').remove(),
     reload: () => render(),
     refresh: async el => { el.closest('.menu') && el.closest('.menu').remove(); D.buildings = null; D.all = null; D.b = {}; D.m = {}; D.chair = {}; D.sec = {}; D.det = {}; D.fees = {}; await render(); toast('Обновено'); },
-    fs: el => { setFs(LS.get('fs', DESK ? 21 : 18) + num(el.dataset.v)); },
+    fs: el => { setFs(LS.get('fs2', FS_DEF) + num(el.dataset.v)); },
+    newBuilding: () => newBuildingSheet(),
     logout: async () => { await post('/api/auth/logout').catch(() => {}); D.user = null; location.hash = '#/'; location.reload(); },
     full: el => {
       const mid = el.dataset.m ? +el.dataset.m : null, d = mid && D.m[mid];
