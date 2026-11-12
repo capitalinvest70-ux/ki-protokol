@@ -116,6 +116,8 @@
     return (SIG[mid] = out);
   }
   async function putSig(mid, key, val) {
+    // към подписа се пази и как е направен: време, скорост, черти и точките с времената им
+    if (val && val.img && typeof sigDyn !== 'undefined' && sigDyn.has(val.img)) { const d0 = sigDyn.get(val.img); sigDyn.delete(val.img); val = Object.assign({}, val, { dyn: d0 }); }
     const s = await loadSigs(mid);
     if (val == null) { delete s[key]; await idb.del(mid + ':' + key).catch(() => {}); }
     else { s[key] = val; await idb.set(mid + ':' + key, val); }
@@ -352,6 +354,16 @@
   #kim .tabs { position:absolute; left:0; right:0; bottom:0; z-index:5; background:rgba(255,255,255,.7);
     -webkit-backdrop-filter:blur(22px) saturate(180%); backdrop-filter:blur(22px) saturate(180%); border-top:1px solid rgba(255,255,255,.75); }
   #kim .tabs[hidden], #kim.kbd .tabs { display:none; }
+  #kim.wide.kbd .tabs { display:flex; }
+  #kim.tablet .padw canvas { height:300px; }
+  #kim.tablet .menu .sheet { width:min(760px, 94vw); }
+  #kim.tablet:not(.wide) .tabs button { font-size:14px; }
+  /* прозорец с подпис: без прозрачност и замъгляване – иначе писането по екрана изостава */
+  #kim .menu.haspad { background:rgba(5,15,35,.5); }
+  #kim .menu .sheet.haspad { -webkit-backdrop-filter:none; backdrop-filter:none; background:#f5f8fe; }
+  #kim .menu .sheet.haspad .card { background:#fff; }
+  #kim .padw canvas { will-change:contents; }
+  #kim .sigok .dyn { display:block; font-weight:500; color:#3d6a52; font-size:.8em; margin-top:2px; }
   /* долните раздели не растат с буквите – да се събират и 5-те на тесен телефон */
   #kim:not(.wide) .tabs button { flex:1 1 0; min-width:0; font-size:11px; letter-spacing:-.01em; line-height:1.15; padding-left:2px; padding-right:2px; overflow:hidden; }
   #kim:not(.wide) .tabs button b { font-size:20px; }
@@ -513,7 +525,10 @@
 
   const root = document.createElement('div'); root.id = 'kim';
   if (BR.hero) root.style.setProperty('--hero', `url(${BR.hero})`);
-  if (DESK) root.classList.add('desk');
+  // Таблет: широк екран – подреждаме като на компютър
+  const TABLET = !DESK && Math.min((window.screen && window.screen.width) || 0, (window.screen && window.screen.height) || 0) >= 600;
+  if (DESK || TABLET) root.classList.add('desk');
+  if (TABLET) root.classList.add('tablet');
   root.innerHTML = `<div class="top"></div><div class="main"></div><div class="dock" hidden></div><div class="tabs" hidden></div><div class="toast hide"></div>`;
   document.body.appendChild(root);
   const $top = root.querySelector('.top'), $main = root.querySelector('.main'), $tabs = root.querySelector('.tabs'), $toast = root.querySelector('.toast'), $dock = root.querySelector('.dock');
@@ -775,7 +790,7 @@
 
   /* ---------- ✨ Плавност: ленти, вибрация, успех, въртящи се цифри ---------- */
   let dragging = null, suppressClick = false;
-  const WIDE = () => DESK && window.innerWidth >= 900;
+  const WIDE = () => (DESK || TABLET) && window.innerWidth >= 900;
   function setBars() {
     const w = WIDE();
     root.classList.toggle('wide', w); root.classList.toggle('side', w && !$tabs.hidden);
@@ -1535,6 +1550,8 @@
   }
 
   /* ---------- Подпис с пръст ---------- */
+  const sigDyn = new Map();
+  const dynText = d => d ? `подписано за ${(d.ms / 1000).toFixed(1).replace('.', ',')} сек · ${d.strokes} ${d.strokes === 1 ? 'черта' : 'черти'} · ${d.speed} т/сек` : '';
   function sigPad(el) {
     const cv = el.querySelector('canvas'), ph = el.querySelector('.ph');
     const clr = el.querySelector('[data-pad=clear]'), sh = el.closest('.sheet');
@@ -1542,34 +1559,83 @@
     const saveB = sh && sh.querySelectorAll('.padw').length === 1 ? sh.querySelector('[data-sh=save], [data-x=save]') : null;
     const doneB = saveB && el.nextElementSibling && el.nextElementSibling.matches('[data-pad=done]') ? el.nextElementSibling : null;
     if (doneB) doneB.onclick = () => saveB.click();
-    const mark = on => { el.classList.toggle('ink', on); if (clr) clr.hidden = !on; if (doneB) { doneB.hidden = !on; if (on) setTimeout(() => { try { doneB.scrollIntoView({ block: 'nearest', behavior: 'smooth' }); } catch (e) {} }, 60); } };
-    const dpr = Math.max(1, window.devicePixelRatio || 1);
+    let shown = false;
+    const mark = on => {
+      el.classList.toggle('ink', on); if (clr) clr.hidden = !on;
+      if (doneB) { doneB.hidden = !on; if (on && !shown) setTimeout(() => { try { doneB.scrollIntoView({ block: 'nearest', behavior: 'smooth' }); } catch (e) {} }, 60); }
+      shown = on;
+    };
+    if (sh) { sh.classList.add('haspad'); if (sh.parentElement) sh.parentElement.classList.add('haspad'); }
+    const dpr = Math.min(2, Math.max(1, window.devicePixelRatio || 1));   // над 2 само бави
     const fit = () => { const r = cv.getBoundingClientRect(); cv.width = Math.round(r.width * dpr); cv.height = Math.round(r.height * dpr); };
     fit();
-    const g = cv.getContext('2d');
-    g.lineCap = 'round'; g.lineJoin = 'round'; g.strokeStyle = '#0a1f6b'; g.lineWidth = 2.6 * dpr;
-    let drawing = false, last = null, ink = false, box = [1e9, 1e9, -1, -1];
-    const pt = e => { const r = cv.getBoundingClientRect(); return [(e.clientX - r.left) * dpr, (e.clientY - r.top) * dpr]; };
-    const grow = ([x, y]) => { box = [Math.min(box[0], x), Math.min(box[1], y), Math.max(box[2], x), Math.max(box[3], y)]; };
-    cv.addEventListener('pointerdown', e => { e.preventDefault(); cv.setPointerCapture(e.pointerId); drawing = true; last = pt(e); grow(last); g.beginPath(); g.arc(last[0], last[1], g.lineWidth / 2, 0, 7); g.fillStyle = g.strokeStyle; g.fill(); if (!ink) { ink = true; if (ph) ph.hidden = true; mark(true); } });
-    cv.addEventListener('pointermove', e => { if (!drawing) return; e.preventDefault(); const p = pt(e); g.beginPath(); g.moveTo(last[0], last[1]); g.lineTo(p[0], p[1]); g.stroke(); last = p; grow(p); });
-    const end = () => { drawing = false; };
+    const g = cv.getContext('2d', { desynchronized: true }) || cv.getContext('2d');
+    g.lineCap = 'round'; g.lineJoin = 'round'; g.strokeStyle = '#0a1f6b'; g.fillStyle = '#0a1f6b'; g.lineWidth = 2.6 * dpr;
+    let drawing = false, last = null, mid = null, ink = false, box = [1e9, 1e9, -1, -1], rect = null, scrolled = false;
+    // как е направен подписът: всяка черта е списък от точки [x, y, милисекунди от началото, натиск]
+    let strokes = [], cur = null, t0 = 0;
+    const grow = (x, y) => { if (x < box[0]) box[0] = x; if (y < box[1]) box[1] = y; if (x > box[2]) box[2] = x; if (y > box[3]) box[3] = y; };
+    const add = e => {
+      const x = (e.clientX - rect.left) * dpr, y = (e.clientY - rect.top) * dpr;
+      if (cur) cur.push([Math.round(e.clientX - rect.left), Math.round(e.clientY - rect.top), Math.round((e.timeStamp || performance.now()) - t0), Math.round((e.pressure || 0) * 100) / 100]);
+      grow(x, y); return [x, y];
+    };
+    cv.addEventListener('pointerdown', e => {
+      e.preventDefault(); try { cv.setPointerCapture(e.pointerId); } catch (x) {}
+      rect = cv.getBoundingClientRect(); drawing = true;
+      if (!strokes.length) t0 = e.timeStamp || performance.now();
+      cur = []; strokes.push(cur);
+      last = add(e); mid = last;
+      g.beginPath(); g.arc(last[0], last[1], g.lineWidth / 2, 0, 7); g.fill();
+      if (!ink) { ink = true; if (ph) ph.hidden = true; el.classList.add('ink'); }
+    });
+    cv.addEventListener('pointermove', e => {
+      if (!drawing) return; e.preventDefault();
+      const evs = e.getCoalescedEvents ? e.getCoalescedEvents() : null;
+      const list = evs && evs.length ? evs : [e];
+      g.beginPath(); g.moveTo(mid[0], mid[1]);
+      for (const ev of list) {
+        const p = add(ev), m2 = [(last[0] + p[0]) / 2, (last[1] + p[1]) / 2];
+        g.quadraticCurveTo(last[0], last[1], m2[0], m2[1]);   // гладка линия през средите
+        last = p; mid = m2;
+      }
+      g.stroke();
+    });
+    const end = () => {
+      if (!drawing) return; drawing = false;
+      g.beginPath(); g.moveTo(mid[0], mid[1]); g.lineTo(last[0], last[1]); g.stroke();
+      mark(true);   // бутоните се показват след чертата, не по време на писане
+    };
     cv.addEventListener('pointerup', end); cv.addEventListener('pointercancel', end);
+    const dyn = () => {
+      if (!strokes.length) return null;
+      let len = 0, pts = 0, draw = 0, vmax = 0;
+      for (const st of strokes) {
+        pts += st.length; if (st.length) draw += st[st.length - 1][2] - st[0][2];
+        for (let i = 1; i < st.length; i++) { const d = Math.hypot(st[i][0] - st[i - 1][0], st[i][1] - st[i - 1][1]), dt = st[i][2] - st[i - 1][2]; len += d; if (dt > 0 && d / dt > vmax) vmax = d / dt; }
+      }
+      const lastSt = strokes[strokes.length - 1], total = lastSt.length ? lastSt[lastSt.length - 1][2] : 0;
+      return { v: 1, ms: total, drawMs: draw, strokes: strokes.length, points: pts, len: Math.round(len), speed: draw > 0 ? Math.round(len / draw * 1000) : 0, maxSpeed: Math.round(vmax * 1000),
+        w: Math.round(rect ? rect.width : 0), h: Math.round(rect ? rect.height : 0), device: (navigator.userAgent.match(/Android [^;)]+; [^;)]+/) || [navigator.platform || ''])[0], data: strokes };
+    };
     return {
       has: () => ink,
-      clear() { g.clearRect(0, 0, cv.width, cv.height); ink = false; box = [1e9, 1e9, -1, -1]; if (ph) ph.hidden = false; mark(false); },
+      clear() { g.clearRect(0, 0, cv.width, cv.height); ink = false; box = [1e9, 1e9, -1, -1]; strokes = []; cur = null; if (ph) ph.hidden = false; mark(false); },
+      dyn,
       png() {
         if (!ink) return null;
         const m = 8 * dpr, x = Math.max(0, box[0] - m), y = Math.max(0, box[1] - m), w = Math.min(cv.width, box[2] + m) - x, h = Math.min(cv.height, box[3] + m) - y;
         const scale = Math.min(1, 520 / w, 180 / h);
         const o = document.createElement('canvas'); o.width = Math.max(1, Math.round(w * scale)); o.height = Math.max(1, Math.round(h * scale));
         o.getContext('2d').drawImage(cv, x, y, w, h, 0, 0, o.width, o.height);
-        return o.toDataURL('image/png');
+        const img = o.toDataURL('image/png');
+        const dy = dyn(); if (dy) sigDyn.set(img, dy);   // пази се заедно с подписа (виж putSig)
+        return img;
       },
     };
   }
   const padHtml = (label, existing) => `<label class="l">✍️ ${esc(label)}</label>
-    ${existing ? `<div class="sigok"><img src="${existing.img}" alt=""><div class="grow">✓ Има подпис</div></div>` : ''}
+    ${existing ? `<div class="sigok"><img src="${existing.img}" alt=""><div class="grow">✓ Има подпис${existing.dyn ? `<span class="dyn">${esc(dynText(existing.dyn))}</span>` : ''}</div></div>` : ''}
     <div class="padw"><canvas></canvas><div class="ln"></div><div class="ph">${existing ? 'Нов подпис – тук' : 'Подпишете се тук'}</div>
       <button type="button" class="pclr" data-pad="clear" hidden aria-label="Изчисти подписа">↺ Изчисти</button></div>
     <button type="button" class="btn big ok" data-pad="done" hidden>✓ Готово</button>`;
