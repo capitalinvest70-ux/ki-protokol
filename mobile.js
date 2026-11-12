@@ -113,7 +113,86 @@
     if (SIG[mid]) return SIG[mid];
     const out = {};
     try { for (const k of (await idb.keys()) || []) if (String(k).startsWith(mid + ':')) out[String(k).slice(String(mid).length + 1)] = await idb.get(k); } catch (e) {}
-    return (SIG[mid] = out);
+    SIG[mid] = out;
+    // първо отваряне на събранието: взимаме и подписите от другите устройства (чакаме най-много 4 сек)
+    await Promise.race([Promise.all([syncSigs(mid), syncContacts()]).catch(() => {}), new Promise(r => setTimeout(r, 4000))]);
+    return out;
+  }
+
+  /* ---------- 🔄 Общи подписи: пазят се и в Програма за протокол, за да ги виждат всички устройства ----------
+     Място: /api/settings/<ключ> (общо за всички потребители на програмата).
+       ki_i_<събрание>            – списък: { ключ: време }  (отрицателно време = изтрит)
+       ki_s_<събрание>_<ключ>     – самият подпис / снимка на пълномощно
+       ki_contacts                – имейли и телефони по обект
+     На устройството остава копие (IndexedDB) – работи и без интернет; печели по-новият запис. */
+  const REM = {
+    get: async k => { const r = await api('/api/settings/' + k); if (!r || !r.value) return null; try { return JSON.parse(r.value); } catch (e) { return null; } },
+    set: (k, v) => post('/api/settings/' + k, { value: v == null ? '' : JSON.stringify(v) }),
+  };
+  const sxGet = async mid => (await idb.get('sx:' + mid).catch(() => null)) || {};
+  const sxSet = (mid, L) => idb.set('sx:' + mid, L).catch(() => {});
+  const syncBusy = {};
+  let syncInfo = { at: 0, ok: null };
+  async function syncSigs(mid) {
+    if (!mid || syncBusy[mid]) return false;
+    syncBusy[mid] = true;
+    let changed = false;
+    try {
+      const s = SIG[mid] || (SIG[mid] = {});
+      const R = (await REM.get('ki_i_' + mid)) || {}, L = await sxGet(mid);
+      const mine = {};   // това, което това устройство качва сега
+      for (const k of new Set([...Object.keys(R), ...Object.keys(L), ...Object.keys(s)])) {
+        const r = +R[k] || 0; let l = +L[k] || 0;
+        if (!l && s[k]) l = 1;                         // стар подпис отпреди общото пазене
+        if (Math.abs(r) > Math.abs(l)) {               // на другото устройство е по-ново
+          if (r < 0) { if (s[k]) { delete s[k]; await idb.del(mid + ':' + k).catch(() => {}); changed = true; } }
+          else { const v = await REM.get('ki_s_' + mid + '_' + k); if (v) { s[k] = v; await idb.set(mid + ':' + k, v); changed = true; } else continue; }
+          L[k] = r;
+        } else if (Math.abs(l) > Math.abs(r)) {        // тук е по-ново – качваме
+          if (l < 0) { mine[k] = l; await REM.set('ki_s_' + mid + '_' + k, null).catch(() => {}); }
+          else if (s[k]) {
+            const t = l === 1 ? Date.now() : l;
+            let v = s[k], js = JSON.stringify(v);
+            if (js.length > 300000 && v.dyn && v.dyn.data) { v = Object.assign({}, v, { dyn: Object.assign({}, v.dyn, { data: undefined }) }); js = JSON.stringify(v); }
+            if (js.length > 850000) continue;          // твърде голяма снимка – остава само на това устройство
+            await REM.set('ki_s_' + mid + '_' + k, v);
+            mine[k] = t; L[k] = t;
+          }
+        }
+      }
+      if (Object.keys(mine).length) {                  // списъкът се чете пак точно преди запис – друго устройство може да е писало
+        const R2 = (await REM.get('ki_i_' + mid)) || {};
+        for (const k in mine) if (Math.abs(mine[k]) >= Math.abs(+R2[k] || 0)) R2[k] = mine[k];
+        await REM.set('ki_i_' + mid, R2);
+      }
+      await sxSet(mid, L);
+      syncInfo = { at: Date.now(), ok: true };
+    } catch (e) { if (e instanceof AuthErr) throw e; syncInfo = { at: Date.now(), ok: false }; }
+    finally { syncBusy[mid] = false; }
+    return changed;
+  }
+  let contactsBusy = false;
+  const contactsPending = new Set();   // контакти, които чакат качване
+  async function syncContacts(push) {
+    (push || []).forEach(id => contactsPending.add(String(id)));
+    if (contactsBusy) return false; contactsBusy = true;
+    let changed = false;
+    try {
+      push = [...contactsPending];
+      const R = (await REM.get('ki_contacts')) || {};
+      for (const id in R) {
+        const c = await idb.get('c:u' + id).catch(() => null);
+        if (!c || (+R[id].t || 0) > (+c.t || 0)) { await idb.set('c:u' + id, R[id]).catch(() => {}); changed = true; }
+      }
+      if (push && push.length) {
+        let w = false;
+        for (const id of push) { const c = await idb.get('c:u' + id).catch(() => null); if (c && (+c.t || 0) >= (+(R[id] || {}).t || 0)) { R[id] = c; w = true; } }
+        if (w) await REM.set('ki_contacts', R);
+        push.forEach(id => contactsPending.delete(id));
+      }
+    } catch (e) { if (e instanceof AuthErr) throw e; }
+    finally { contactsBusy = false; }
+    return changed;
   }
   async function putSig(mid, key, val) {
     // към подписа се пази и как е направен: време, скорост, черти и точките с времената им
@@ -121,11 +200,20 @@
     const s = await loadSigs(mid);
     if (val == null) { delete s[key]; await idb.del(mid + ':' + key).catch(() => {}); }
     else { s[key] = val; await idb.set(mid + ':' + key, val); }
+    const L = await sxGet(mid); L[key] = val == null ? -Date.now() : Date.now(); await sxSet(mid, L);
+    syncSigs(mid).catch(() => {});   // веднага към другите устройства
   }
 
   // Имейл и телефон за всеки обект – пазят се на телефона (телефонът отива и в програмата)
-  const contactOf = async unitId => (await idb.get('c:u' + unitId).catch(() => null)) || {};
-  const putContact = (unitId, c) => idb.set('c:u' + unitId, c).catch(() => {});
+  const contactOf = async unitId => {
+    const c = (await idb.get('c:u' + unitId).catch(() => null)) || {};
+    if (!c.t && (c.email || c.phone)) { c.t = 1; putContact(unitId, c, 1); }   // стар контакт – качваме го веднъж
+    return c;
+  };
+  const putContact = async (unitId, c, t) => {
+    await idb.set('c:u' + unitId, Object.assign({}, c, { t: t || Date.now() })).catch(() => {});
+    syncContacts([unitId]).catch(() => {});
+  };
   async function contactsFor(units) {
     const out = [];
     for (const u of units) { const c = await contactOf(u.id); const email = c.email || ''; const phone = c.phone || u.phone || ''; if (email || phone) out.push({ u, email, phone }); }
@@ -554,6 +642,7 @@
     if (!b) { b = document.createElement('div'); b.className = 'busy'; root.appendChild(b); }
     b.innerHTML = `<div><span class="spin"></span><span>${esc(msg || 'Момент…')}</span></div>`;
   }
+  const busyOn = () => !!root.querySelector('.busy');
   const busyText = msg => { const b = root.querySelector('.busy span:last-child'); if (b) b.textContent = msg; };
   // Изпълнява действие с индикатор и показва грешката разбираемо
   async function run(msg, fn) {
@@ -955,6 +1044,20 @@
       }, 310);
     }
   })();
+
+  // 🔄 Докато е отворено събрание: на всеки 6 сек се проверява за подписи от другите устройства
+  let syncRender = false, syncTick = 0;
+  setInterval(async () => {
+    const mid = curMid();
+    if (!mid || !D.user || document.hidden) return;
+    try {
+      syncTick++;
+      const got = await syncSigs(mid);
+      if (got) syncRender = true;
+      if ((got || contactsPending.size || syncTick % 3 === 0) && await syncContacts()) syncRender = true;
+      if (syncRender && !root.querySelector('.menu') && !typing() && !busyOn()) { syncRender = false; await render(true); toast('🔄 Нови подписи от друго устройство'); }
+    } catch (e) {}
+  }, 6000);
 
   /* ---------- 🚀 Обновяване: проверява за нова версия и се обновява само ---------- */
   const UPD_REPO = 'capitalinvest70-ux/ki-protokol';
