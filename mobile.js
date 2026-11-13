@@ -659,6 +659,7 @@
   root.innerHTML = `<div class="top"></div><div class="main"></div><div class="dock" hidden></div><div class="tabs" hidden></div><div class="toast hide"></div>`;
   document.body.appendChild(root);
   const $top = root.querySelector('.top'), $main = root.querySelector('.main'), $tabs = root.querySelector('.tabs'), $toast = root.querySelector('.toast'), $dock = root.querySelector('.dock');
+  $toast.addEventListener('click', () => $toast.classList.add('hide'));
   const setDock = h => { $dock.innerHTML = h || ''; $dock.hidden = !h; if (typeof setBars === 'function') try { setBars(); } catch (e) {} };
   const FS_DEF = DESK ? 21 : 22;
   const setFs = v => { v = Math.max(15, Math.min(30, v)); LS.set('fs2', v); root.style.setProperty('--fs', v + 'px'); return v; };
@@ -668,7 +669,7 @@
   function toast(msg, err) {
     if (!err && /^✓|✓$/.test(String(msg).trim())) { success(String(msg).replace(/^✓\s*|\s*✓$/g, '')); return; }
     $toast.textContent = msg; $toast.classList.toggle('err', !!err); $toast.classList.remove('hide');
-    clearTimeout(toastT); toastT = setTimeout(() => $toast.classList.add('hide'), err ? 5000 : 2400);
+    clearTimeout(toastT); toastT = setTimeout(() => $toast.classList.add('hide'), err ? Math.max(8000, String(msg).length * 120) : 2400);
   }
   function busy(on, msg) {
     let b = root.querySelector('.busy');
@@ -3270,7 +3271,7 @@
     if (cand.length > 1 && job.floor != null) cand = cand.filter(p => num(p.floor) === num(job.floor)).concat(cand);
     const p = cand[0];
     if (!p) throw new Error(`Админ: няма обект №${job.unit_no} в тази ЕС`);
-    if (job.residents != null && job.residents !== '' && num(job.residents) !== num(p.inhabitants)) await adm('PATCH', `/api/es-properties/${p.id}/`, { inhabitants: num(job.residents) });
+    if (job.residents != null && job.residents !== '' && num(job.residents) !== num(p.inhabitants)) await adm('PATCH', `/api/es-properties/${p.id}`, { inhabitants: num(job.residents) });
     if (job.owner && job.name) {
       const persons = (await admPersons(esId, true)).filter(x => admPid(x) === p.id);
       const same = persons.find(x => norm(x.full_name) === norm(job.name));
@@ -3288,24 +3289,42 @@
 
   /* Създаване: вход от програмата → нова ЕС в админа (обекти + собственици) */
   async function admCreateFromBuilding(bid) {
-    const d = await loadBuilding(bid, true), b = d.building, units = d.units || [];
+    const d = await loadBuilding(bid, true), b = d.building;
     const ent = await admEntity();
-    const city = (String(b.address || '').match(/гр\.?\s*([А-Яа-я\- ]+?)(,|$)/) || [])[1] || '';
-    busyText('Създавам ЕС в админа…');
-    const es = await adm('POST', '/api/es/', { entity: ent, title: b.name, address: b.address || '', city: city.trim(), floors: num(b.floors) || null });
-    await admLink(bid, es.id);
-    let n = 0, used = new Set();
-    for (const u of units) {
-      let no = admNo(u.unit_no); if (no == null || used.has(no)) { no = 1; while (used.has(no)) no++; }
-      used.add(no);
-      busyText(`Обекти в админа: ${++n} от ${units.length}…`);
-      const p = await adm('POST', '/api/es-properties/', { es: es.id, number: no, property_type: admT2P[u.type] || 'apartment', ownership: 'privately_owned', floor: num(u.floor),
-        common_parts_percent: num(u.ideal_parts) ? (Math.round(num(u.ideal_parts) * 1000) / 1000).toFixed(3) : null, inhabitants: num(u.residents_count), pets: num(u.dogs_count),
-        elevator_usage: u.uses_elevator == null ? true : !!num(u.uses_elevator), description: String(u.unit_no) !== String(no) ? 'Обект ' + u.unit_no : '' });
-      if (u.owner_name) await adm('POST', '/api/es-related-persons/', { full_name: u.owner_name, relationship_type: 'owner', email: '', phone_number: u.phone || '', has_client_app_access: false, is_using_property: true, is_active: true, es_property: p.id, entity: ent }).catch(() => {});
+    // ако вече е създадена (напр. при прекъснат опит) – ползваме нея, не правим втора
+    const L = await admLinks(true); let esId = L[bid];
+    if (esId && !(await admES(true)).find(e => e.id === esId)) esId = null;
+    if (!esId) {
+      const city = (String(b.address || '').match(/гр\.?\s*([А-Яа-я\- ]+?)(,|$)/) || [])[1] || '';
+      busyText('Създавам ЕС в админа…');
+      const es = await adm('POST', '/api/es/', { entity: ent, title: b.name, address: b.address || '', city: city.trim(), floors: num(b.floors) || null });
+      esId = es.id; await admLink(bid, esId);
     }
+    const n = await admEnsureProps(bid, esId, d);
     AD.es = null;
-    return es;
+    return { id: esId, made: n };
+  }
+  // Създава в админа обектите от входа, които още ги няма там (по номер), заедно със собственика
+  async function admEnsureProps(bid, esId, d) {
+    d = d || await loadBuilding(bid, true);
+    const units = d.units || [], ent = await admEntity();
+    const have = new Set((await admProps(esId, true)).map(p => num(p.number)));
+    const used = new Set(have); let k = 0, made = 0;
+    for (const u of units) {
+      k++;
+      let no = admNo(u.unit_no);
+      if (no != null && have.has(no)) continue;
+      if (no == null || used.has(no)) { no = 1; while (used.has(no)) no++; }
+      used.add(no);
+      busyText(`Обекти в админа: ${k} от ${units.length}…`);
+      const id = (await adm('POST', '/api/es-properties/', { es: esId, number: no, property_type: admT2P[u.type] || 'apartment', ownership: 'privately_owned', floor: num(u.floor),
+        area: '0.00', common_parts_percent: (Math.round(num(u.ideal_parts) * 100) / 100).toFixed(2), inhabitants: Math.round(num(u.residents_count)), pets: Math.round(num(u.dogs_count)),
+        elevator_usage: u.uses_elevator == null ? true : !!num(u.uses_elevator), description: String(u.unit_no) !== String(no) ? 'Обект ' + u.unit_no : '' })).id;
+      made++;
+      if (u.owner_name && id) await adm('POST', '/api/es-related-persons/', { full_name: u.owner_name, relationship_type: 'owner', email: '', phone_number: u.phone || '', has_client_app_access: false, is_using_property: true, is_active: true, es_property: id, entity: ent }).catch(() => {});
+    }
+    delete AD.props[esId]; delete AD.persons[esId];
+    return made;
   }
 
   /* Обратно: ЕС от админа → нов вход в Програма за протокол */
@@ -3413,7 +3432,7 @@
     m.querySelector('[data-x=ok]').onclick = async () => {
       const inh = num(m.querySelector('#ap-in').value), pets = num(m.querySelector('#ap-pe').value);
       const ok = await run('Записвам в админа…', async () => {
-        if (inh !== num(p.inhabitants) || pets !== num(p.pets)) await adm('PATCH', `/api/es-properties/${pid}/`, { inhabitants: inh, pets });
+        if (inh !== num(p.inhabitants) || pets !== num(p.pets)) await adm('PATCH', `/api/es-properties/${pid}`, { inhabitants: inh, pets });
         for (const c of m.querySelectorAll('[data-pp]')) {
           const n = c.querySelector('.ap-n').value.trim(), t = c.querySelector('.ap-t').value.trim(), em = c.querySelector('.ap-e').value.trim();
           if (c.dataset.pp === 'new') { if (n) await adm('POST', '/api/es-related-persons/', { full_name: n, relationship_type: 'owner', email: em, phone_number: t, has_client_app_access: false, is_using_property: true, is_active: true, es_property: pid, entity: await admEntity() }); continue; }
@@ -3473,7 +3492,7 @@
     admMake: async el => {
       const bid = +el.dataset.b;
       const es = await run('Създавам в админа…', () => admCreateFromBuilding(bid));
-      if (es) { success('ЕС е създадена и в админа'); render(true); }
+      if (es) { success(`Готово в админа – ${es.made} нови обекта`); render(true); }
     },
     admImport: async el => {
       const bid = await run('Пренасям ЕС в програмата…', () => admImportEs(el.dataset.es));
@@ -3501,6 +3520,7 @@
       const bid = +el.dataset.b;
       const n = await run('Пращам към админа…', async () => {
         const d = await loadBuilding(bid, true), L = await admLinks(); const esId = L[bid]; if (!esId) throw new Error('Входът не е свързан');
+        const made = await admEnsureProps(bid, esId, d); if (made) toast(`Създадени ${made} нови обекта в админа`);
         let k = 0; const units = d.units || [];
         for (const u of units) {
           busyText(`Обект ${++k} от ${units.length}…`);
