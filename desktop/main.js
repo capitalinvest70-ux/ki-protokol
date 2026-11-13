@@ -85,6 +85,10 @@ ipcMain.handle('ki-http', (e, method, url, headers, body) => new Promise(res => 
   if (data) rq.write(data);
   rq.end();
 }));
+ipcMain.handle('ki-viber', (e, number, text) => {
+  try { clipboard.writeText(String(text || '')); } catch (x) {}
+  return shell.openExternal(`viber://chat?number=${encodeURIComponent(number || '')}&draft=${encodeURIComponent(text || '')}`).then(() => true, () => false);
+});
 ipcMain.handle('ki-mailto', (e, bcc, subject, text) => {
   const u = `mailto:?bcc=${encodeURIComponent(bcc || '')}&subject=${encodeURIComponent(subject || '')}&body=${encodeURIComponent(text || '')}`;
   return shell.openExternal(u).then(() => true, () => false);

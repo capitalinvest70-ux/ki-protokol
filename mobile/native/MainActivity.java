@@ -709,6 +709,24 @@ public class MainActivity extends BridgeActivity {
         }
     }
 
+    // Viber: отваря чата с човека и готовия текст (текстът е и копиран – ако не е в полето, „Постави“)
+    private void viberChat(String number, String text) {
+        runOnUiThread(() -> {
+            try {
+                android.content.ClipboardManager cm = (android.content.ClipboardManager) getSystemService(CLIPBOARD_SERVICE);
+                if (cm != null) cm.setPrimaryClip(android.content.ClipData.newPlainText("Протоколи КИ", text == null ? "" : text));
+                Intent i = new Intent(Intent.ACTION_VIEW, Uri.parse("viber://chat?number=" + Uri.encode(number) + "&draft=" + Uri.encode(text == null ? "" : text)));
+                i.setPackage("com.viber.voip");
+                i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                startActivity(i);
+            } catch (ActivityNotFoundException e) {
+                Toast.makeText(this, "Viber не е инсталиран на този телефон", Toast.LENGTH_LONG).show();
+            } catch (Exception e) {
+                Toast.makeText(this, "Viber не се отвори: " + e.getMessage(), Toast.LENGTH_LONG).show();
+            }
+        });
+    }
+
     // Отваря пощата (Gmail) с всички адреси като скрито копие – без файл
     private void mailTo(String bcc, String subject, String text) {
         runOnUiThread(() -> {
@@ -833,6 +851,9 @@ public class MainActivity extends BridgeActivity {
 
         @JavascriptInterface
         public String simSms(String id, String number, String text) { return MainActivity.this.simSms(id, number, text); }
+
+        @JavascriptInterface
+        public void viberChat(String number, String text) { MainActivity.this.viberChat(number, text); }
 
         @JavascriptInterface
         public void mailTo(String bcc, String subject, String text) { MainActivity.this.mailTo(bcc, subject, text); }

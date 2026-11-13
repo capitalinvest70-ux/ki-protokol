@@ -2748,8 +2748,8 @@
   const translit = t => String(t || '').replace(/[„“”«»]/g, '"').replace(/[–—]/g, '-').replace(/№/g, 'No').replace(/[Ѐ-ӿѝ]/g, ch => {
     const lo = ch.toLowerCase(), r = TRL[lo]; if (r == null) return ''; return ch === lo ? r : r.charAt(0).toUpperCase() + r.slice(1); });
   // Текстът на SMS-а – най-подробният вариант, който се събира в 1 SMS (70 знака на кирилица, 160 на латиница)
-  function smsFit(d, kind, latin) {
-    const m = d.meeting, b = d.building || {}, max = latin ? 160 : 70, cfg = ncfg();
+  function smsFit(d, kind, latin, maxO) {
+    const m = d.meeting, b = d.building || {}, max = maxO || (latin ? 160 : 70), cfg = ncfg();
     const dd = bgDate(m.meeting_date).slice(0, 5), tm = String(m.meeting_time || '').slice(0, 5);
     const p = String(m.place || '').replace(/пред входа на етажната собственост/i, 'пред входа').replace(/етажната собственост/gi, 'ЕС').replace(/\s+/g, ' ').trim();
     const cut = x => String(x || '').replace(/^\s*(гр\.|град|с\.)\s*[^,]+,\s*/i, '').replace(/^жилищна сграда\s*/i, '').replace(/\s+/g, ' ').trim();
@@ -2854,13 +2854,13 @@
   async function nSave(mid) { const L = NL[mid]; if (!L) return; LS.set('n_' + mid, L); await REM.set('ki_n_' + mid, L).catch(() => {}); }
   let nSaveT = null;
   const nSaveSoon = mid => { clearTimeout(nSaveT); nSaveT = setTimeout(() => nSave(mid), 2500); };
-  const ST = { wait: ['⏳', 'чака'], ok: ['☑️', 'изпратено'], dlv: ['✅', 'доставено'], err: ['❌', 'не стигна'], open: ['📨', 'в пощата – натисни „Изпрати“'] };
+  const ST = { wait: ['⏳', 'чака'], ok: ['☑️', 'изпратено'], dlv: ['✅', 'доставено'], err: ['❌', 'не стигна'], open: ['📨', 'в пощата – натисни „Изпрати“'], vbo: ['💬', 'отворено във Viber'] };
   function nCount(r) {
-    const c = { sms: 0, mail: 0, dlv: 0, ok: 0, err: 0, wait: 0, open: 0 };
+    const c = { sms: 0, mail: 0, vb: 0, dlv: 0, ok: 0, err: 0, wait: 0, open: 0, vbo: 0 };
     for (const i of r.items) { c[i.ch]++; c[i.st] = (c[i.st] || 0) + 1; }
     return c;
   }
-  const nSum = c => [c.sms ? `📱 ${c.sms} SMS` : '', c.mail ? `📧 ${c.mail} имейла` : '', c.dlv ? `✅ ${c.dlv} доставени` : '', c.ok ? `☑️ ${c.ok} изпратени` : '', c.open ? `📨 ${c.open} в пощата` : '', c.wait ? `⏳ ${c.wait} чакат` : '', c.err ? `❌ ${c.err} не стигнаха` : ''].filter(Boolean).join(' · ');
+  const nSum = c => [c.sms ? `📱 ${c.sms} SMS` : '', c.vb ? `💬 ${c.vb} Viber · ${c.vbo} отворени` : '', c.mail ? `📧 ${c.mail} имейла` : '', c.dlv ? `✅ ${c.dlv} доставени` : '', c.ok ? `☑️ ${c.ok} изпратени` : '', c.open ? `📨 ${c.open} в пощата` : '', c.wait ? `⏳ ${c.wait} чакат` : '', c.err ? `❌ ${c.err} не стигнаха` : ''].filter(Boolean).join(' · ');
 
   // Изпраща и записва отчета. o: { kind, label, sms, mail, smsText, subj, mailText, pdf, only }
   async function sendRun(mid, o) {
@@ -2921,6 +2921,43 @@
     return run1;
   }
 
+  /* --- 💬 Viber от моя телефон: един по един, с готовия текст --- */
+  function viberOpen(to, text) {
+    if (N && N.viberChat) return N.viberChat('+' + to, text);
+    location.href = `viber://chat?number=%2B${to}&draft=${encodeURIComponent(text)}`;
+  }
+  async function nViber(mid, kind, text) {
+    const d = D.m[mid] || await loadMeeting(mid), rc = await recipientsOf(d);
+    if (!rc.sms.length) { toast('Няма мобилни номера', true); return; }
+    await nLog(mid, true);
+    const run1 = { id: nId(), at: stamp(), kind, label: NK[kind][1] + ' – Viber', smsVia: '', mailVia: '', vb: true, text, items: rc.sms.map(r => ({ ch: 'vb', ...r, st: 'wait', err: '' })) };
+    NL[mid].runs.unshift(run1); NL[mid].runs = NL[mid].runs.slice(0, 40);
+    await nSave(mid);
+    nViberSheet(mid, run1.id);
+  }
+  function nViberSheet(mid, rid) {
+    const r = (NL[mid] || { runs: [] }).runs.find(x => x.id === rid); if (!r) return;
+    const body = () => {
+      const left = r.items.filter(i => i.st === 'wait');
+      return `<div class="row"><h2 class="grow">💬 Viber – един по един</h2><button class="btn lite sm" data-x="close">✕</button></div>
+        <div class="mut">„Следващ“ отваря Viber при човека с готовия текст → натискаш „Изпрати“ → връщаш се тук. Текстът е и копиран – ако не е в полето, задръж и „Постави“.</div>
+        <div class="okbox" style="margin:10px 0">Отворени ${r.items.length - left.length} от ${r.items.length}</div>
+        ${left.length ? `<button class="btn big col" data-x="next" style="background:#7360f2;color:#fff"><span>💬 Следващ: ${esc(left[0].show)}</span><span style="font-weight:400;font-size:.8em">${esc(left[0].who)}</span></button>` : '<div class="okbox">✅ Всички са отворени във Viber</div>'}
+        ${r.items.map((i, k) => `<div class="iss row" style="gap:8px"><div class="grow">${i.st === 'wait' ? '⏳' : '✅'} <b>${esc(i.show)}</b><br><span class="mut">${esc(i.who)}</span></div><button class="btn lite sm" data-x="one" data-k="${k}">${i.st === 'wait' ? 'Отвори' : 'Пак'}</button></div>`).join('')}
+        <label class="l">Текст</label><div class="iss">${esc(r.text)}</div>
+        <button class="btn out" data-x="done">Готово</button>`;
+    };
+    const m = sheet(body()), sh = m.querySelector('.sheet');
+    const open = it => { viberOpen(it.to, r.text); it.st = 'vbo'; nSaveSoon(mid); const y = sh.scrollTop; sh.innerHTML = body(); sh.scrollTop = y; };
+    sh.addEventListener('click', e => {
+      const b = e.target.closest('[data-x]'); if (!b) return;
+      const x = b.dataset.x;
+      if (x === 'close' || x === 'done') { nSave(mid); m.remove(); if (/\/end$/.test(location.hash)) render(true); return; }
+      if (x === 'next') { const it = r.items.find(i => i.st === 'wait'); if (it) open(it); }
+      if (x === 'one') open(r.items[+b.dataset.k]);
+    });
+  }
+
   /* --- карта в „Подписи и край“ --- */
   async function nCard(mid, d) {
     const L = await nLog(mid, true), closed = isClosed(d.meeting);
@@ -2965,6 +3002,7 @@
         ${rc.none.length ? `<label class="l">Без телефон и имейл</label><div class="mut">${esc(rc.none.join(' · '))}</div><div class="mut" style="margin-top:6px">Телефонът се добавя в картата на обекта (пълната версия) или при подписа.</div>` : ''}
       </details>
       <button class="btn big gold" data-x="go">📣 Изпрати</button>
+      ${rc.sms.length ? `<button class="btn lite" data-x="vb" style="color:#7360f2">💬 През моя Viber – един по един (${rc.sms.length})</button>` : ''}
       <div class="grid2"><button class="btn out" data-x="cfg">⚙️ Настройки</button><button class="btn out" data-x="close">Отказ</button></div>`);
     const q = s => m.querySelector(s), st = q('#n-st');
     const cnt = () => { const p = smsParts(st.value.trim()), el = q('#n-cnt');
@@ -2974,6 +3012,8 @@
     q('#n-lat').onchange = () => { const lat = q('#n-lat').checked; LS.set('ncfg', Object.assign(LS.get('ncfg', {}), { latin: lat })); st.value = smsFit(d, kind, lat); cnt(); };
     q('[data-x=close]').onclick = () => m.remove();
     q('[data-x=cfg]').onclick = () => { m.remove(); nCfgSheet(); };
+    const vbBtn = q('[data-x=vb]');
+    if (vbBtn) vbBtn.onclick = () => { m.remove(); nViber(mid, kind, smsFit(d, kind, false, 1000)).catch(e => toast(e.message || String(e), true)); };
     q('[data-x=go]').onclick = async () => {
       const o = { kind, label: NK[kind][1], sms: q('#n-sms').checked, mail: q('#n-mail').checked, smsText: st.value.trim(), subj: q('#n-subj').value.trim(), mailText: q('#n-mt').value.trim(), pdf: !!(q('#n-pdf') && q('#n-pdf').checked) };
       if (!o.sms && !o.mail) { toast('Избери SMS и/или имейл', true); return; }
@@ -2990,9 +3030,10 @@
     const L = await nLog(mid); const r = L.runs.find(x => x.id === rid); if (!r) return;
     const body = () => {
       const fail = r.items.filter(i => i.st === 'err');
-      const row = i => `<div class="iss ${i.st === 'err' ? 'w' : ''}">${ST[i.st][0]} ${i.ch === 'sms' ? '📱' : '📧'} <b>${esc(i.show)}</b> <span class="mut">· ${esc(i.who || '')}</span><br><span class="mut">${esc(ST[i.st][1])}${i.err ? ' – ' + esc(i.err) : ''}</span></div>`;
+      const row = i => `<div class="iss ${i.st === 'err' ? 'w' : ''}">${ST[i.st][0]} ${i.ch === 'sms' ? '📱' : i.ch === 'vb' ? '💬' : '📧'} <b>${esc(i.show)}</b> <span class="mut">· ${esc(i.who || '')}</span><br><span class="mut">${esc(ST[i.st][1])}${i.err ? ' – ' + esc(i.err) : ''}</span></div>`;
       return `<h2>${(NK[r.kind] || NK.custom)[0]} ${esc(r.label)}</h2><div class="mut">${esc(r.at)}${r.smsVia ? ` · SMS ${r.smsVia === 'sim' ? 'през SIM' : 'през SMSAPI.bg'}` : ''}${r.mailVia ? ` · имейл ${r.mailVia === 'brevo' ? 'през Brevo' : 'през Gmail'}` : ''}</div>
         <div class="okbox" style="margin:10px 0">${nSum(nCount(r)) || '—'}</div>
+        ${r.vb ? `<button class="btn gold" data-x="vbgo" style="color:#fff;background:#7360f2">💬 ${r.items.some(i => i.st === 'wait') ? 'Продължи във Viber' : 'Отвори списъка за Viber'}</button>` : ''}
         ${fail.length ? `<button class="btn gold" data-x="retry">🔁 Прати пак на неуспешните (${fail.length})</button>` : ''}
         ${r.items.some(i => i.sid && i.st === 'ok') ? '<button class="btn lite" data-x="chk">🔄 Провери доставката (SMSAPI)</button>' : ''}
         ${r.items.map(row).join('')}
@@ -3003,6 +3044,7 @@
     const wire = () => {
       const on = (k, f) => { const el = m.querySelector(`[data-x=${k}]`); if (el) el.onclick = f; };
       on('close', () => m.remove());
+      on('vbgo', () => { m.remove(); nViberSheet(mid, r.id); });
       on('retry', async () => {
         const only = r.items.filter(i => i.st === 'err'); m.remove();
         const x = await run('Изпращам пак…', () => sendRun(mid, { kind: r.kind, label: r.label + ' (повторно)', smsText: r.text, subj: r.subj, mailText: r.mtext, pdf: r.pdf, only }));
