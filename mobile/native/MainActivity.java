@@ -3,6 +3,12 @@ package bg.capitalinvest.protokol;
 import android.Manifest;
 import android.annotation.SuppressLint;
 import android.app.DownloadManager;
+import android.app.PendingIntent;
+import android.content.BroadcastReceiver;
+import android.content.Context;
+import android.content.IntentFilter;
+import android.telephony.SmsManager;
+import java.util.Iterator;
 import android.bluetooth.BluetoothAdapter;
 import android.bluetooth.BluetoothDevice;
 import android.bluetooth.BluetoothSocket;
@@ -603,9 +609,127 @@ public class MainActivity extends BridgeActivity {
         try { sr.startListening(i); } catch (Exception e) { dictOn = false; dictJs("err", "Разпознаването не тръгна: " + e.getMessage()); }
     }
 
+    /* ---------- 📣 Покани: SMS през SIM картата, връзка към SMSAPI / Brevo, имейл ---------- */
+    // Страницата не може сама да се свърже с други сайтове – минава оттук, само към тези адреси
+    private static final String[] HTTP_OK = {"https://api.smsapi.bg/", "https://api2.smsapi.bg/", "https://api.smsapi.com/", "https://api2.smsapi.com/", "https://api.brevo.com/"};
+
+    private void http(String id, String method, String url, String headers, String body) {
+        new Thread(() -> {
+            int code = 0; String out;
+            try {
+                boolean ok = false;
+                for (String p : HTTP_OK) if (url != null && url.startsWith(p)) ok = true;
+                if (!ok) throw new Exception("Непознат адрес");
+                HttpURLConnection c = (HttpURLConnection) new URL(url).openConnection();
+                c.setConnectTimeout(15000);
+                c.setReadTimeout(60000);
+                c.setRequestMethod(method == null || method.isEmpty() ? "GET" : method);
+                c.setRequestProperty("User-Agent", "Protokoli-KI");
+                if (headers != null && !headers.isEmpty()) {
+                    JSONObject h = new JSONObject(headers);
+                    for (Iterator<String> it = h.keys(); it.hasNext(); ) { String k = it.next(); c.setRequestProperty(k, h.getString(k)); }
+                }
+                if (body != null && !body.isEmpty() && !"GET".equals(method)) {
+                    c.setDoOutput(true);
+                    try (OutputStream os = c.getOutputStream()) { os.write(body.getBytes(StandardCharsets.UTF_8)); }
+                }
+                code = c.getResponseCode();
+                InputStream in = code >= 400 ? c.getErrorStream() : c.getInputStream();
+                ByteArrayOutputStream bo = new ByteArrayOutputStream();
+                if (in != null) try (InputStream i2 = in) { byte[] buf = new byte[16384]; int n; while ((n = i2.read(buf)) > 0) bo.write(buf, 0, n); }
+                out = bo.toString(StandardCharsets.UTF_8.name());
+            } catch (Exception e) {
+                out = "ERR " + (e.getMessage() == null ? e.toString() : e.getMessage());
+            }
+            String q = JSONObject.quote(id);
+            js("window.__kiHttpCb&&window.__kiHttpCb[" + q + "]&&window.__kiHttpCb[" + q + "](" + code + "," + JSONObject.quote(out) + ")");
+        }).start();
+    }
+
+    private boolean smsAllowed() {
+        return Build.VERSION.SDK_INT < 23 || checkSelfPermission(Manifest.permission.SEND_SMS) == PackageManager.PERMISSION_GRANTED;
+    }
+
+    private String smsPerm() {
+        if (smsAllowed()) return "OK";
+        runOnUiThread(() -> requestPermissions(new String[]{Manifest.permission.SEND_SMS}, 10));
+        return "PERM";
+    }
+
+    // Праща един SMS през SIM картата. Отговаря два пъти: изпратен (KIM_smsCb) и доставен (KIM_smsDlv)
+    @SuppressWarnings("deprecation")
+    private String simSms(String id, String number, String text) {
+        if (!smsAllowed()) return smsPerm();
+        try {
+            SmsManager sm = Build.VERSION.SDK_INT >= 31 ? getSystemService(SmsManager.class) : SmsManager.getDefault();
+            if (sm == null) return "ERR Телефонът не може да праща SMS";
+            ArrayList<String> parts = sm.divideMessage(text);
+            final int total = parts.size();
+            final String aSent = getPackageName() + ".SMS_SENT." + id, aDlv = getPackageName() + ".SMS_DLV." + id;
+            final String q = JSONObject.quote(id);
+            final int[] sent = {0}, dlv = {0};
+            final String[] err = {null};
+            BroadcastReceiver rs = new BroadcastReceiver() {
+                @Override public void onReceive(Context ctx, Intent i) {
+                    int rc = getResultCode();
+                    if (rc != RESULT_OK && err[0] == null) err[0] = rc == SmsManager.RESULT_ERROR_NO_SERVICE ? "Няма обхват"
+                            : rc == SmsManager.RESULT_ERROR_RADIO_OFF ? "Самолетен режим / изключена SIM"
+                            : rc == SmsManager.RESULT_ERROR_NULL_PDU ? "Грешен номер" : "Операторът отказа (код " + rc + ")";
+                    if (++sent[0] >= total) {
+                        try { unregisterReceiver(this); } catch (Exception ignored) { }
+                        js("window.KIM_smsCb&&KIM_smsCb(" + q + "," + (err[0] == null) + "," + JSONObject.quote(err[0] == null ? "" : err[0]) + ")");
+                    }
+                }
+            };
+            BroadcastReceiver rd = new BroadcastReceiver() {
+                @Override public void onReceive(Context ctx, Intent i) {
+                    if (++dlv[0] >= total) {
+                        try { unregisterReceiver(this); } catch (Exception ignored) { }
+                        js("window.KIM_smsDlv&&KIM_smsDlv(" + q + "," + (getResultCode() == RESULT_OK) + ")");
+                    }
+                }
+            };
+            if (Build.VERSION.SDK_INT >= 33) {
+                registerReceiver(rs, new IntentFilter(aSent), Context.RECEIVER_NOT_EXPORTED);
+                registerReceiver(rd, new IntentFilter(aDlv), Context.RECEIVER_NOT_EXPORTED);
+            } else {
+                registerReceiver(rs, new IntentFilter(aSent));
+                registerReceiver(rd, new IntentFilter(aDlv));
+            }
+            int fl = PendingIntent.FLAG_UPDATE_CURRENT | (Build.VERSION.SDK_INT >= 23 ? PendingIntent.FLAG_IMMUTABLE : 0);
+            ArrayList<PendingIntent> si = new ArrayList<>(), di = new ArrayList<>();
+            for (int k = 0; k < total; k++) {
+                si.add(PendingIntent.getBroadcast(this, (id + "s" + k).hashCode(), new Intent(aSent).setPackage(getPackageName()), fl));
+                di.add(PendingIntent.getBroadcast(this, (id + "d" + k).hashCode(), new Intent(aDlv).setPackage(getPackageName()), fl));
+            }
+            sm.sendMultipartTextMessage(number, null, parts, si, di);
+            return "OK " + total;
+        } catch (Exception e) {
+            return "ERR " + (e.getMessage() == null ? e.toString() : e.getMessage());
+        }
+    }
+
+    // Отваря пощата (Gmail) с всички адреси като скрито копие – без файл
+    private void mailTo(String bcc, String subject, String text) {
+        runOnUiThread(() -> {
+            try {
+                Intent s = new Intent(Intent.ACTION_SENDTO, Uri.parse("mailto:"));
+                if (bcc != null && !bcc.trim().isEmpty()) s.putExtra(Intent.EXTRA_BCC, bcc.split("\\s*,\\s*"));
+                s.putExtra(Intent.EXTRA_SUBJECT, subject == null ? "" : subject);
+                s.putExtra(Intent.EXTRA_TEXT, text == null ? "" : text);
+                try { s.setPackage("com.google.android.gm"); startActivity(s); return; } catch (ActivityNotFoundException ignored) { }
+                s.setPackage(null);
+                startActivity(Intent.createChooser(s, "Изпрати по имейл"));
+            } catch (Exception e) {
+                Toast.makeText(this, "Няма приложение за поща: " + e.getMessage(), Toast.LENGTH_LONG).show();
+            }
+        });
+    }
+
     @Override
     public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+        if (requestCode == 10) js("window.KIM_smsPerm&&KIM_smsPerm(" + smsAllowed() + ")");
         if (requestCode == 9) {
             boolean ok = Build.VERSION.SDK_INT < 23 || checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED;
             js("window.KIM_dictPerm&&window.KIM_dictPerm(" + ok + ")");
@@ -700,6 +824,18 @@ public class MainActivity extends BridgeActivity {
         public String btList() {
             return MainActivity.this.btList();
         }
+
+        @JavascriptInterface
+        public void http(String id, String method, String url, String headers, String body) { MainActivity.this.http(id, method, url, headers, body); }
+
+        @JavascriptInterface
+        public String smsPerm() { return MainActivity.this.smsPerm(); }
+
+        @JavascriptInterface
+        public String simSms(String id, String number, String text) { return MainActivity.this.simSms(id, number, text); }
+
+        @JavascriptInterface
+        public void mailTo(String bcc, String subject, String text) { MainActivity.this.mailTo(bcc, subject, text); }
 
         @JavascriptInterface
         public void print(String id, String target, String b64) {

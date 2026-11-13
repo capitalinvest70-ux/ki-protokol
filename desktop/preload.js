@@ -14,5 +14,7 @@ contextBridge.exposeInMainWorld('KIDesktop', {
   appVersion: () => ipcRenderer.invoke('ki-version'),
   latestRelease: () => ipcRenderer.invoke('ki-latest'),
   update: (url, name) => ipcRenderer.invoke('ki-update', url, name),
+  http: (method, url, headers, body) => ipcRenderer.invoke('ki-http', method, url, headers, body),
+  mailTo: (bcc, subject, text) => ipcRenderer.invoke('ki-mailto', bcc, subject, text),
   onUpdate: (cb) => ipcRenderer.on('ki-upd', (e, p, m) => cb(p, m)),
 });

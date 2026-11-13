@@ -1499,6 +1499,8 @@
       if (report) LS.set('auto_' + r.id, report);
       go(`#/m/${r.id}/att`, true);
       if (report) toast(`Попълних автоматично ${report.done.length} неща${report.need.length ? ` · остават ${report.need.length} – виж „Хора и такси“` : ''}`);
+      // покана до собствениците по SMS и имейл – веднага след създаването
+      setTimeout(() => nSendSheet(r.id, 'invite', 'Събранието е създадено ✓ Прати поканата на собствениците по SMS и имейл:').catch(() => {}), 1200);
     }
   }
 
@@ -2292,6 +2294,7 @@
     const mgr = m.meeting_type !== 'regular';
     const contacts = await contactsFor(d.units || []);
     const emailsN = new Set(contacts.map(c => c.email).filter(validEmail)).size;
+    const nc = await nCard(mid, d).catch(() => '');
     html(`<div class="card"><h2>${iss.length ? `⚠️ Липсват ${iss.length} неща` : '✅ Всичко задължително е готово'}</h2>
       ${iss.slice(0, 30).map(([t, where]) => `<div class="iss" ${where ? `data-act="fix" data-w="${esc(where)}" style="cursor:pointer"` : ''}>• ${esc(t)} ${where ? '<span class="mut">›</span>' : ''}</div>`).join('')}
       ${warn.map(([t, where]) => `<div class="iss w" ${where ? `data-act="fix" data-w="${esc(where)}" style="cursor:pointer"` : ''}>⚠️ ${esc(t)} ${where ? '<span class="mut">›</span>' : ''}</div>`).join('')}
@@ -2307,6 +2310,8 @@
       <div class="card" id="k-sign"><h2>✍️ Подписи на протокола</h2>
       ${sigRow('chair', 'Председател', chairName)}${sigRow('sec', 'Протоколчик', secName)}
       <div class="mut" style="margin-top:6px">Подписите се пазят на този телефон и влизат в PDF файловете отдолу.</div></div>
+
+      ${nc}
 
       <div class="card"><h2>📄 Документи</h2>
       <div class="mut" style="margin-bottom:8px">Всеки документ: 🖨️ печат на C80 · 📧 имейл · 💬 Viber</div>
@@ -2653,6 +2658,7 @@
       <button class="btn lite sm" data-act="closeMenu">✕</button></div>
       <label class="l">Големина на буквите</label><div class="grid2"><button class="btn lite" data-act="fs" data-v="-1" style="margin:0">А−</button><button class="btn lite" data-act="fs" data-v="1" style="margin:0">А+</button></div>
       <button class="btn lite" data-act="refresh">🔄 Обнови данните</button>
+      <button class="btn lite" data-act="nCfg">📣 SMS и имейл – настройки</button>
       ${window.KIAndroid || window.KIDesktop ? '<button class="btn lite" data-act="upd">🚀 Провери за нова версия</button><div class="mut k-ver" style="text-align:center;margin-top:6px"></div>' : ''}
       ${LS.get('border', []).length ? '<button class="btn out" data-act="ordReset">↕️ Входовете по подразбиране</button>' : ''}
       <button class="btn out" data-act="full" ${mid ? `data-m="${mid}"` : ''}>🖥️ Пълна версия на програмата</button>
@@ -2663,6 +2669,386 @@
   menu = function () { _menu(); myVer().then(v => { const e = root.querySelector('.menu:not(.out) .k-ver'); if (e && v) e.textContent = `Версия ${v.name} · build ${v.build}`; }); };
   const withMid = async (msg, fn, after) => { const mid = curMid(); const r = await run(msg, () => fn(mid)); if (after !== false) { delete D.det[mid]; render(true); } return r; };
 
+  /* ---------- 📣 Покани и известия: SMS (SIM картата или SMSAPI.bg) и имейл (Gmail или Brevo) ----------
+     Получателите са собствениците от входа: телефонът от картата на обекта + имейлът/телефонът от подписа.
+     В едно поле може да има 2 и повече телефона – разделят се и SMS отива на всеки.
+     Отчетът (на кого е стигнало) се пази в Програма за протокол (ki_n_<събрание>) – вижда се от всички устройства.
+     Ключовете за SMSAPI / Brevo се пазят само на устройството. */
+  const NCFG_DEF = { sms: ANDROID ? 'sim' : 'smsapi', smsBase: 'https://api.smsapi.bg', smsToken: '', smsFrom: '', mail: 'gmail', brevoKey: '', mailFrom: '', mailName: 'Капитал Инвест', sign: 'Капитал Инвест', pdf: true };
+  const ncfg = () => Object.assign({}, NCFG_DEF, LS.get('ncfg', {}));
+  const NK = { invite: ['✉️', 'Покана за събранието'], remind: ['⏰', 'Напомняне'], done: ['📌', 'Протоколът е готов'], custom: ['💬', 'Съобщение'] };
+  const nId = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+  const sleep = ms => new Promise(r => setTimeout(r, ms));
+  const fmtPhone = n9 => '0' + n9.slice(0, 3) + ' ' + n9.slice(3, 6) + ' ' + n9.slice(6);
+
+  // „0888 123 456, 0899 111 222“, „0888123456/0877…“, „+359 88…“ → [{ n: '359888123456', show: '0888 123 456' }]
+  function phonesOf(...vals) {
+    const mob = [], other = [], seen = new Set();
+    for (const v of vals) for (const seg of String(v || '').split(/[,;\/|\n]+|\s+(?:и|или)\s+/i)) {
+      let s = seg.replace(/\D/g, '');
+      while (s.length >= 8) {
+        let n9 = null;
+        if (s.startsWith('00359')) { n9 = s.slice(5, 14); s = s.slice(14); }
+        else if (s.startsWith('359')) { n9 = s.slice(3, 12); s = s.slice(12); }
+        else if (s[0] === '0' && /^0(8[7-9]|9[89])/.test(s)) { n9 = s.slice(1, 10); s = s.slice(10); }
+        else if (s[0] === '0') { other.push(s.slice(0, 9)); s = s.slice(9); continue; }
+        else if (/^(8[7-9]|9[89])/.test(s) && s.length >= 9) { n9 = s.slice(0, 9); s = s.slice(9); }
+        else { other.push(s); break; }
+        if (/^(8[7-9]|9[89])\d{7}$/.test(n9)) { if (!seen.has(n9)) { seen.add(n9); mob.push({ n: '359' + n9, show: fmtPhone(n9) }); } }
+        else other.push(n9);
+      }
+      if (s.length) { if (s.length >= 5) other.push(s); }
+    }
+    return { mob, other };
+  }
+  const emailsOf = (...vals) => [...new Set(vals.flatMap(v => String(v || '').split(/[\s,;]+/)).map(e => e.trim().toLowerCase()).filter(validEmail))];
+
+  async function recipientsOf(d) {
+    const sms = {}, mail = {}, none = [], bad = [];
+    const att = d.attendance || [];
+    for (const u of d.units || []) {
+      const c = await contactOf(u.id);
+      const nm = u.owner_name || (att.find(x => num(x.unit_id) === num(u.id)) || {}).person_name || '';
+      const who = unitLabel(u) + (nm ? ' · ' + nm : '');
+      const ph = phonesOf(c.phone, u.phone);
+      ph.mob.forEach(p => { const r = sms[p.n] = sms[p.n] || { to: p.n, show: p.show, who: [] }; if (!r.who.includes(who)) r.who.push(who); });
+      if (ph.other.length) bad.push({ who, v: ph.other.join(', ') });
+      const em = emailsOf(c.email, u.email);
+      em.forEach(e => { const r = mail[e] = mail[e] || { to: e, show: e, who: [] }; if (!r.who.includes(who)) r.who.push(who); });
+      if (!ph.mob.length && !em.length) none.push(who);
+    }
+    const fin = o => Object.values(o).map(r => ({ to: r.to, show: r.show, who: r.who.join('; ') }));
+    return { sms: fin(sms), mail: fin(mail), none, bad };
+  }
+
+  function nTexts(d, kind) {
+    const m = d.meeting, b = d.building || {}, sign = ncfg().sign || 'Капитал Инвест';
+    const where = b.address || b.name || '', dt = bgDate(m.meeting_date), tm = String(m.meeting_time || '').slice(0, 5), pl = m.place || '';
+    const ag = (d.agenda || []).map(a => `${a.item_no}. ${a.title}`).join('\n');
+    const hi = 'Уважаеми собственици,\n\n', bye = `\n\nС уважение,\n${COMPANY}`;
+    if (kind === 'invite') return {
+      sms: `Покана: общо събрание на етажната собственост ${where} на ${dt} от ${tm} ч., ${pl}. Дневният ред е на входа. ${sign}`,
+      subj: `Покана за общо събрание – ${where} – ${dt}`,
+      mail: `${hi}На основание чл. 13 от ЗУЕС Ви каним на общо събрание на етажната собственост на адрес ${where}, което ще се проведе на ${dt} от ${tm} ч., място: ${pl}.\n\nДневен ред:\n${ag}\n\nПри липса на кворум събранието ще се проведе един час по-късно, на същото място и при същия дневен ред.\n\nМоля, носете документ за самоличност. Ако не можете да присъствате, може да упълномощите друго лице с писмено пълномощно.${bye}` };
+    if (kind === 'remind') return {
+      sms: `Напомняне: ${dt} от ${tm} ч. – общо събрание на етажната собственост ${where}, ${pl}. Очакваме Ви! ${sign}`,
+      subj: `Напомняне: общо събрание – ${where} – ${dt} от ${tm} ч.`,
+      mail: `${hi}Напомняме Ви, че на ${dt} от ${tm} ч., място: ${pl}, ще се проведе общото събрание на етажната собственост на адрес ${where}.\n\nДневен ред:\n${ag}\n\nОчакваме Ви!${bye}` };
+    if (kind === 'done') return {
+      sms: `Протоколът от общото събрание на етажната собственост ${where} от ${dt} е готов и е поставен на входа. ${sign}`,
+      subj: `Протокол от общото събрание – ${where} – ${dt}`,
+      mail: `${hi}Протоколът от общото събрание на етажната собственост на адрес ${where}, проведено на ${dt}, е изготвен и е поставен на видно място на входа.\n\nПри въпроси – свържете се с нас.${bye}` };
+    return { sms: ` ${sign}`, subj: `${where} – съобщение`, mail: `${hi}${bye}` };
+  }
+  // кирилицата: 70 знака в един SMS, 67 в дълъг; латиница: 160 / 153
+  const smsParts = t => { const uc = /[^\x0A\x0D\x20-\x7E]/.test(t), n = t.length; return { n, parts: !n ? 0 : uc ? (n <= 70 ? 1 : Math.ceil(n / 67)) : (n <= 160 ? 1 : Math.ceil(n / 153)), uc }; };
+
+  /* --- връзка навън: страницата не може сама, минава през приложението --- */
+  function nHttp(method, url, headers, body) {
+    if (ANDROID && N.http) return new Promise(res => {
+      const id = nId(); const cb = window.__kiHttpCb = window.__kiHttpCb || {};
+      const t = setTimeout(() => { delete cb[id]; res({ status: 0, body: 'ERR няма отговор' }); }, 75000);
+      cb[id] = (s, b) => { clearTimeout(t); delete cb[id]; res({ status: s, body: b }); };
+      N.http(id, method, url, JSON.stringify(headers || {}), body || '');
+    });
+    if (DESK && N.http) return N.http(method, url, JSON.stringify(headers || {}), body || '');
+    return Promise.resolve({ status: 0, body: 'ERR Работи в приложението за телефон и компютър (обнови го)' });
+  }
+  const SMSW = {};
+  window.KIM_smsCb = (id, ok, err) => { const w = SMSW[id]; if (w && w.res) { w.res({ ok, err }); w.res = null; } };
+  window.KIM_smsDlv = (id, ok) => { const w = SMSW[id]; if (w && w.onDlv) w.onDlv(ok); delete SMSW[id]; };
+  let smsPermRes = null;
+  window.KIM_smsPerm = ok => { if (smsPermRes) { smsPermRes(ok); smsPermRes = null; } };
+  function simPerm() {
+    if (!ANDROID || !N.smsPerm) return Promise.resolve(false);
+    if (N.smsPerm() === 'OK') return Promise.resolve(true);
+    return new Promise(res => { smsPermRes = res; setTimeout(() => { if (smsPermRes) { smsPermRes(false); smsPermRes = null; } }, 90000); });
+  }
+  function simSend(to, text, onDlv) {
+    return new Promise(res => {
+      const id = nId(); SMSW[id] = { res, onDlv };
+      const r = String(N.simSms(id, '+' + to, text));
+      if (!/^OK/.test(r)) { delete SMSW[id]; res({ ok: false, err: r === 'PERM' ? 'Няма разрешение за SMS' : r.replace(/^ERR\s*/, '') }); return; }
+      setTimeout(() => { const w = SMSW[id]; if (w && w.res) { w.res({ ok: false, err: 'Телефонът не потвърди изпращането' }); w.res = null; } }, 45000);
+    });
+  }
+  const SMSAPI_ERR = { 8: 'грешка в заявката', 11: 'съобщението е твърде дълго', 13: 'грешен номер', 14: 'името на подателя не е одобрено', 101: 'грешен ключ (token)', 102: 'грешен ключ (token)', 103: 'няма достатъчно кредит', 105: 'забранен адрес' };
+  const smsBase = cfg => (cfg.smsBase || NCFG_DEF.smsBase).replace(/\/+$/, '');
+  const smsHdr = cfg => ({ Authorization: 'Bearer ' + String(cfg.smsToken || '').trim(), 'Content-Type': 'application/x-www-form-urlencoded' });
+  const jsonOf = t => { try { return JSON.parse(t); } catch (e) { return null; } };
+  async function smsapiSend(cfg, to, text) {
+    const p = new URLSearchParams({ to, message: text, format: 'json', encoding: 'utf-8' });
+    if (cfg.smsFrom) p.set('from', cfg.smsFrom.trim());
+    const r = await nHttp('POST', smsBase(cfg) + '/sms.do', smsHdr(cfg), p.toString());
+    const j = jsonOf(r.body);
+    if (j && j.list && j.list.length) { const x = j.list[0]; return x.error ? { ok: false, err: SMSAPI_ERR[x.error] || 'грешка ' + x.error } : { ok: true, sid: x.id }; }
+    if (j && j.error) return { ok: false, err: SMSAPI_ERR[j.error] || j.message || 'грешка ' + j.error };
+    return { ok: false, err: String(r.body || 'Грешка ' + r.status).replace(/^ERR\s*/, '').replace(/<[^>]+>/g, ' ').trim().slice(0, 160) };
+  }
+  async function brevoSend(cfg, email, subject, text, att) {
+    const body = { sender: { name: cfg.mailName || COMPANY, email: String(cfg.mailFrom || '').trim() }, to: [{ email }], subject, textContent: text,
+      htmlContent: `<div style="font-family:Arial,sans-serif;font-size:15px;line-height:1.55;color:#0d1626">${esc(text).replace(/\n/g, '<br>')}</div>` };
+    if (att) body.attachment = [{ name: att.name, content: att.b64 }];
+    const r = await nHttp('POST', 'https://api.brevo.com/v3/smtp/email', { 'api-key': String(cfg.brevoKey || '').trim(), 'Content-Type': 'application/json', Accept: 'application/json' }, JSON.stringify(body));
+    if (r.status >= 200 && r.status < 300) return { ok: true };
+    const j = jsonOf(r.body);
+    return { ok: false, err: (j && j.message) || String(r.body || 'Грешка ' + r.status).replace(/^ERR\s*/, '').slice(0, 160) };
+  }
+  async function invitationPdf(mid) {
+    const d = D.m[mid] || await loadMeeting(mid);
+    const res = await fetch(`/api/meetings/${mid}/invitation-html`, { credentials: 'same-origin' });
+    if (!res.ok) throw new Error('Поканата още не може да се направи');
+    return { blob: buildPdf(await htmlToPages(await res.text(), false), false), name: `Покана - ${fileSafe((d.building || {}).name)} - ${bgDate(d.meeting.meeting_date)}.pdf` };
+  }
+
+  /* --- отчет --- */
+  const NL = {};
+  async function nLog(mid, fresh) {
+    if (NL[mid] && !fresh) return NL[mid];
+    const r = await REM.get('ki_n_' + mid).catch(() => undefined);
+    const got = (r && r.runs) ? r : (LS.get('n_' + mid, null) || { runs: [] });
+    // това, което се праща от това устройство, е по-ново – пазим същите редове (там идва „доставено“)
+    if (NL[mid]) { const mine = {}; NL[mid].runs.forEach(x => { mine[x.id] = x; }); got.runs = got.runs.map(x => mine[x.id] || x); NL[mid].runs.forEach(x => { if (!got.runs.includes(x) && x.items.some(i => i.st === 'wait' || i.st === 'ok')) got.runs.unshift(x); }); }
+    NL[mid] = got;
+    return NL[mid];
+  }
+  async function nSave(mid) { const L = NL[mid]; if (!L) return; LS.set('n_' + mid, L); await REM.set('ki_n_' + mid, L).catch(() => {}); }
+  let nSaveT = null;
+  const nSaveSoon = mid => { clearTimeout(nSaveT); nSaveT = setTimeout(() => nSave(mid), 2500); };
+  const ST = { wait: ['⏳', 'чака'], ok: ['☑️', 'изпратено'], dlv: ['✅', 'доставено'], err: ['❌', 'не стигна'], open: ['📨', 'в пощата – натисни „Изпрати“'] };
+  function nCount(r) {
+    const c = { sms: 0, mail: 0, dlv: 0, ok: 0, err: 0, wait: 0, open: 0 };
+    for (const i of r.items) { c[i.ch]++; c[i.st] = (c[i.st] || 0) + 1; }
+    return c;
+  }
+  const nSum = c => [c.sms ? `📱 ${c.sms} SMS` : '', c.mail ? `📧 ${c.mail} имейла` : '', c.dlv ? `✅ ${c.dlv} доставени` : '', c.ok ? `☑️ ${c.ok} изпратени` : '', c.open ? `📨 ${c.open} в пощата` : '', c.wait ? `⏳ ${c.wait} чакат` : '', c.err ? `❌ ${c.err} не стигнаха` : ''].filter(Boolean).join(' · ');
+
+  // Изпраща и записва отчета. o: { kind, label, sms, mail, smsText, subj, mailText, pdf, only }
+  async function sendRun(mid, o) {
+    const cfg = ncfg(), d = D.m[mid] || await loadMeeting(mid);
+    const rc = o.only ? null : await recipientsOf(d);
+    const L = await nLog(mid, true);
+    const items = o.only ? o.only.map(i => ({ ch: i.ch, to: i.to, show: i.show, who: i.who }))
+      : [...(o.sms ? rc.sms.map(r => ({ ch: 'sms', ...r })) : []), ...(o.mail ? rc.mail.map(r => ({ ch: 'mail', ...r })) : [])];
+    if (!items.length) throw new Error('Няма на кого да се прати');
+    const hasSms = items.some(i => i.ch === 'sms'), hasMail = items.some(i => i.ch === 'mail');
+    if (hasSms) {
+      if (cfg.sms === 'off') throw new Error('SMS е изключен – виж ⚙️ Настройки');
+      if (cfg.sms === 'sim' && !ANDROID) throw new Error('През SIM карта се праща само от телефона. На компютъра избери SMSAPI.bg в ⚙️ Настройки');
+      if (cfg.sms === 'smsapi' && !cfg.smsToken) throw new Error('Липсва ключът (token) от SMSAPI.bg – виж ⚙️ Настройки');
+      if (cfg.sms === 'sim' && !await simPerm()) throw new Error('Разреши на „Протоколи КИ“ да праща SMS (Настройки на телефона → Приложения → Протоколи КИ → Разрешения → SMS)');
+    }
+    if (hasMail && cfg.mail === 'brevo' && (!cfg.brevoKey || !validEmail(String(cfg.mailFrom || '').trim()))) throw new Error('За Brevo трябват ключ и имейл на подателя – виж ⚙️ Настройки');
+    const run1 = { id: nId(), at: stamp(), kind: o.kind, label: o.label || NK[o.kind][1], smsVia: hasSms ? cfg.sms : '', mailVia: hasMail ? cfg.mail : '',
+      text: o.smsText, subj: o.subj, mtext: o.mailText, pdf: !!o.pdf, items: items.map(i => ({ ...i, st: 'wait', err: '' })) };
+    L.runs.unshift(run1); L.runs = L.runs.slice(0, 40);
+    await nSave(mid);
+    const smsI = run1.items.filter(i => i.ch === 'sms'), mailI = run1.items.filter(i => i.ch === 'mail');
+    let k = 0;
+    for (const it of smsI) {
+      busyText(`📱 SMS ${++k} от ${smsI.length} · ${it.show}`);
+      const r = cfg.sms === 'sim'
+        ? await simSend(it.to, o.smsText, ok => { if (ok) { it.st = 'dlv'; nSaveSoon(mid); } })
+        : await smsapiSend(cfg, it.to, o.smsText);
+      if (it.st !== 'dlv') it.st = r.ok ? 'ok' : 'err';
+      it.err = r.ok ? '' : (r.err || 'грешка'); if (r.sid) it.sid = r.sid;
+      if (k % 5 === 0) nSave(mid);
+      if (cfg.sms === 'sim' && k < smsI.length) await sleep(1500);   // да не ни спре операторът
+    }
+    if (mailI.length) {
+      let att = null;
+      if (o.pdf) { busyText('📎 Правя PDF на поканата…'); att = await invitationPdf(mid).catch(() => null); }
+      if (cfg.mail === 'brevo') {
+        const a = att ? { name: att.name, b64: await b64(att.blob) } : null; k = 0;
+        for (const it of mailI) {
+          busyText(`📧 Имейл ${++k} от ${mailI.length} · ${it.show}`);
+          const r = await brevoSend(cfg, it.to, o.subj, o.mailText, a);
+          it.st = r.ok ? 'ok' : 'err'; it.err = r.ok ? '' : r.err;
+        }
+      } else {
+        // Gmail: отваря пощата с всички като скрито копие – остава само „Изпрати“
+        const bcc = mailI.map(i => i.to).join(',');
+        let uri = null;
+        if (att && N && N.saveFile) uri = await N.saveFile(att.name, await b64(att.blob), 'application/pdf').catch(() => null);
+        if (uri && /^ERR/.test(uri)) uri = null;
+        if (ANDROID && uri) N.shareTo(uri, 'application/pdf', 'email', bcc, o.subj, o.mailText);
+        else if (N && N.mailTo) { N.mailTo(bcc, o.subj, o.mailText + (att ? '\n\n(поканата е в приложения файл)' : '')); if (DESK && uri) N.shareFile(uri); }
+        else location.href = `mailto:?bcc=${encodeURIComponent(bcc)}&subject=${encodeURIComponent(o.subj)}&body=${encodeURIComponent(o.mailText)}`;
+        mailI.forEach(i => { i.st = 'open'; });
+        if (DESK && uri) toast('Пощата е отворена. Поканата (PDF) е маркирана в папката – завлечи я в писмото', false);
+      }
+    }
+    await nSave(mid);
+    return run1;
+  }
+
+  /* --- карта в „Подписи и край“ --- */
+  async function nCard(mid, d) {
+    const L = await nLog(mid, true), closed = isClosed(d.meeting);
+    const inv = L.runs.find(r => r.kind === 'invite');
+    const rows = L.runs.slice(0, 6).map(r => `<button class="item" data-act="nRun" data-r="${r.id}"><span style="font-size:1.4em">${(NK[r.kind] || NK.custom)[0]}</span>
+      <div class="grow"><div class="ttl">${esc(r.label)}</div><div class="mut">${esc(r.at)} · ${nSum(nCount(r))}</div></div><span class="arr">›</span></button>`).join('');
+    return `<div class="card" id="k-notify"><h2>📣 Покани и известия – SMS и имейл</h2>
+      ${!closed && !inv ? '<div class="iss w">⚠️ Поканата още не е пратена на собствениците по SMS и имейл.</div>' : ''}
+      ${!closed ? `<button class="btn big ${inv ? 'lite' : 'gold'}" data-act="nSend" data-k="invite">✉️ ${inv ? 'Покана отново' : 'Изпрати поканата – SMS и имейл'}</button>
+        <button class="btn lite" data-act="nSend" data-k="remind">⏰ Напомняне (ден преди събранието)</button>`
+        : '<button class="btn gold" data-act="nSend" data-k="done">📌 Протоколът е готов – SMS и имейл</button>'}
+      <button class="btn lite" data-act="nSend" data-k="custom">💬 Друго съобщение до всички</button>
+      ${rows ? `<label class="l">Изпратено</label>${rows}` : ''}
+      <button class="btn out" data-act="nCfg">⚙️ Настройки за SMS и имейл</button></div>`;
+  }
+
+  /* --- прозорец „Изпрати“ --- */
+  async function nSendSheet(mid, kind, intro) {
+    const d = D.m[mid] || await run('Зареждам…', () => loadMeeting(mid)); if (!d) return;
+    const cfg = ncfg(), rc = await recipientsOf(d), t = nTexts(d, kind);
+    const via = { sim: 'през SIM картата на телефона', smsapi: 'през SMSAPI.bg', off: 'изключен' }[cfg.sms];
+    const viaM = cfg.mail === 'brevo' ? 'автоматично през Brevo' : 'отваря Gmail – всички като скрито копие';
+    const cb = (id, on, dis) => `<input id="${id}" type="checkbox" ${on ? 'checked' : ''} ${dis ? 'disabled' : ''} style="width:28px;height:28px;min-height:0;flex:none">`;
+    const smsOk = cfg.sms !== 'off' && !(cfg.sms === 'sim' && !ANDROID);
+    const lst = (arr, f) => arr.map(f).join('') || '<div class="mut">—</div>';
+    const m = sheet(`<h2>${NK[kind][0]} ${NK[kind][1]}</h2>
+      ${intro ? `<div class="okbox" style="margin-bottom:10px">${esc(intro)}</div>` : ''}
+      <div class="mut">${esc((d.building || {}).name || '')} · ${bgDate(d.meeting.meeting_date)} ${esc(String(d.meeting.meeting_time || '').slice(0, 5))}</div>
+      <label class="row" style="margin-top:14px;gap:12px;font-weight:700">${cb('n-sms', smsOk && rc.sms.length, !smsOk || !rc.sms.length)} 📱 SMS до ${rc.sms.length} номера</label>
+      <div class="mut" style="margin:2px 0 6px 40px">${smsOk ? via : cfg.sms === 'off' ? 'SMS е изключен в настройките' : 'на компютъра – само през SMSAPI.bg (⚙️ Настройки)'}</div>
+      <textarea id="n-st" rows="4">${esc(t.sms)}</textarea><div class="mut" id="n-cnt"></div>
+      <label class="row" style="margin-top:14px;gap:12px;font-weight:700">${cb('n-mail', rc.mail.length, !rc.mail.length)} 📧 Имейл до ${rc.mail.length}</label>
+      <div class="mut" style="margin:2px 0 6px 40px">${viaM}</div>
+      <label class="l">Тема</label><input id="n-subj" value="${esc(t.subj)}">
+      <label class="l">Текст</label><textarea id="n-mt" rows="9">${esc(t.mail)}</textarea>
+      ${kind === 'invite' ? `<label class="row" style="margin-top:10px;gap:12px;font-weight:600">${cb('n-pdf', cfg.pdf)} 📎 Прикачи поканата (PDF)</label>` : ''}
+      <details style="margin-top:12px"><summary style="font-weight:700;cursor:pointer">👥 Получатели (${rc.sms.length + rc.mail.length})${rc.none.length ? ` · ${rc.none.length} без телефон и имейл` : ''}</summary>
+        <label class="l">📱 Телефони</label>${lst(rc.sms, r => `<div class="iss">${esc(r.show)} <span class="mut">· ${esc(r.who)}</span></div>`)}
+        <label class="l">📧 Имейли</label>${lst(rc.mail, r => `<div class="iss">${esc(r.show)} <span class="mut">· ${esc(r.who)}</span></div>`)}
+        ${rc.bad.length ? `<label class="l">⚠️ Не са мобилни – без SMS</label>${lst(rc.bad, r => `<div class="iss w">${esc(r.v)} <span class="mut">· ${esc(r.who)}</span></div>`)}` : ''}
+        ${rc.none.length ? `<label class="l">Без телефон и имейл</label><div class="mut">${esc(rc.none.join(' · '))}</div><div class="mut" style="margin-top:6px">Телефонът се добавя в картата на обекта (пълната версия) или при подписа.</div>` : ''}
+      </details>
+      <button class="btn big gold" data-x="go">📣 Изпрати</button>
+      <div class="grid2"><button class="btn out" data-x="cfg">⚙️ Настройки</button><button class="btn out" data-x="close">Отказ</button></div>`);
+    const q = s => m.querySelector(s), st = q('#n-st');
+    const cnt = () => { const p = smsParts(st.value.trim()); q('#n-cnt').textContent = `${p.n} знака · ${p.parts} SMS на човек${rc.sms.length ? ` · общо ${p.parts * rc.sms.length} SMS` : ''}${p.uc ? ' (кирилица: 70 знака в 1 SMS)' : ''}`; };
+    st.addEventListener('input', cnt); cnt();
+    q('[data-x=close]').onclick = () => m.remove();
+    q('[data-x=cfg]').onclick = () => { m.remove(); nCfgSheet(); };
+    q('[data-x=go]').onclick = async () => {
+      const o = { kind, label: NK[kind][1], sms: q('#n-sms').checked, mail: q('#n-mail').checked, smsText: st.value.trim(), subj: q('#n-subj').value.trim(), mailText: q('#n-mt').value.trim(), pdf: !!(q('#n-pdf') && q('#n-pdf').checked) };
+      if (!o.sms && !o.mail) { toast('Избери SMS и/или имейл', true); return; }
+      if (o.sms && o.smsText.length < 5) { toast('Напиши текста на SMS-а', true); return; }
+      if (kind === 'invite') LS.set('ncfg', Object.assign(LS.get('ncfg', {}), { pdf: o.pdf }));
+      m.remove();
+      const r = await run('Изпращам…', () => sendRun(mid, o));
+      if (r) { if (curMid() === mid && /\/end$/.test(location.hash)) render(true); nRunSheet(mid, r.id); }
+    };
+  }
+
+  /* --- отчет на едно изпращане --- */
+  async function nRunSheet(mid, rid) {
+    const L = await nLog(mid); const r = L.runs.find(x => x.id === rid); if (!r) return;
+    const body = () => {
+      const fail = r.items.filter(i => i.st === 'err');
+      const row = i => `<div class="iss ${i.st === 'err' ? 'w' : ''}">${ST[i.st][0]} ${i.ch === 'sms' ? '📱' : '📧'} <b>${esc(i.show)}</b> <span class="mut">· ${esc(i.who || '')}</span><br><span class="mut">${esc(ST[i.st][1])}${i.err ? ' – ' + esc(i.err) : ''}</span></div>`;
+      return `<h2>${(NK[r.kind] || NK.custom)[0]} ${esc(r.label)}</h2><div class="mut">${esc(r.at)}${r.smsVia ? ` · SMS ${r.smsVia === 'sim' ? 'през SIM' : 'през SMSAPI.bg'}` : ''}${r.mailVia ? ` · имейл ${r.mailVia === 'brevo' ? 'през Brevo' : 'през Gmail'}` : ''}</div>
+        <div class="okbox" style="margin:10px 0">${nSum(nCount(r)) || '—'}</div>
+        ${fail.length ? `<button class="btn gold" data-x="retry">🔁 Прати пак на неуспешните (${fail.length})</button>` : ''}
+        ${r.items.some(i => i.sid && i.st === 'ok') ? '<button class="btn lite" data-x="chk">🔄 Провери доставката (SMSAPI)</button>' : ''}
+        ${r.items.map(row).join('')}
+        ${r.text ? `<label class="l">Текст на SMS</label><div class="iss">${esc(r.text)}</div>` : ''}
+        <button class="btn out" data-x="close">Готово</button>`;
+    };
+    const m = sheet(body()), sh = m.querySelector('.sheet');
+    const wire = () => {
+      const on = (k, f) => { const el = m.querySelector(`[data-x=${k}]`); if (el) el.onclick = f; };
+      on('close', () => m.remove());
+      on('retry', async () => {
+        const only = r.items.filter(i => i.st === 'err'); m.remove();
+        const x = await run('Изпращам пак…', () => sendRun(mid, { kind: r.kind, label: r.label + ' (повторно)', smsText: r.text, subj: r.subj, mailText: r.mtext, pdf: r.pdf, only }));
+        if (x) { if (/\/end$/.test(location.hash)) render(true); nRunSheet(mid, x.id); }
+      });
+      on('chk', async () => {
+        const cfg = ncfg(), ids = r.items.filter(i => i.sid && i.st === 'ok');
+        await run('Проверявам…', async () => {
+          const res = await nHttp('GET', `${smsBase(cfg)}/sms.do?status=${encodeURIComponent(ids.map(i => i.sid).join('|'))}&format=json`, smsHdr(cfg), '');
+          const j = jsonOf(res.body);
+          ((j && j.list) || []).forEach(x => { const it = ids.find(i => String(i.sid) === String(x.id)); if (!it) return;
+            const s = String(x.status || '').toUpperCase();
+            if (s === 'DELIVERED') it.st = 'dlv'; else if (/UNDELIVERED|FAILED|EXPIRED|REJECTED|NOT_FOUND/.test(s)) { it.st = 'err'; it.err = 'операторът: ' + s; } });
+          if (!j || !j.list) toast('SMSAPI не върна статус – опитай след малко', true);
+          await nSave(mid);
+        });
+        sh.innerHTML = body(); wire();
+      });
+    };
+    wire();
+    // SMS през SIM: „доставено“ идва по-късно – обновяваме, докато прозорецът е отворен
+    const iv = setInterval(() => { if (!m.isConnected) { clearInterval(iv); return; } if (r.items.some(i => i.st === 'ok' && i.ch === 'sms' && r.smsVia === 'sim')) { const y = sh.scrollTop; sh.innerHTML = body(); sh.scrollTop = y; wire(); } }, 4000);
+  }
+
+  /* --- ⚙️ Настройки --- */
+  function nCfgSheet() {
+    const c = ncfg();
+    const seg = (name, opts) => `<div class="seg" data-seg="${name}">${opts.map(([v, l]) => `<button type="button" data-v="${v}" class="${c[name] === v ? 'on' : ''}">${l}</button>`).join('')}</div>`;
+    const m = sheet(`<div class="row"><h2 class="grow">⚙️ SMS и имейл</h2><button class="btn lite sm" data-x="close">✕</button></div>
+      <label class="l">📱 SMS се праща</label>
+      ${seg('sms', [...(ANDROID ? [['sim', 'SIM картата']] : []), ['smsapi', 'SMSAPI.bg'], ['off', 'Без SMS']])}
+      <div data-for="sms:sim" class="mut" style="margin-top:8px">От номера на този телефон, по тарифата ти. Първия път телефонът ще пита за разрешение. Вижда се „изпратено“ и „доставено“.</div>
+      <div data-for="sms:smsapi">
+        <label class="l">Ключ (API token)</label><input id="c-tok" type="password" autocomplete="off" value="${esc(c.smsToken)}" placeholder="от portal.smsapi.bg → API → Tokens">
+        <label class="l">Име на подателя</label><input id="c-from" value="${esc(c.smsFrom)}" placeholder="напр. KapInvest – одобрено в SMSAPI; празно = по подразбиране">
+        <label class="l">Сървър</label><div class="seg" data-seg="smsBase">${[['https://api.smsapi.bg', 'smsapi.bg'], ['https://api.smsapi.com', 'smsapi.com']].map(([v, l]) => `<button type="button" data-v="${v}" class="${c.smsBase === v ? 'on' : ''}">${l}</button>`).join('')}</div>
+        <button class="btn lite" data-x="pts">💰 Провери сметката</button><div class="mut" id="c-pts"></div>
+      </div>
+      <label class="l">Подпис в SMS</label><input id="c-sign" value="${esc(c.sign)}">
+      <label class="l" style="margin-top:18px">📧 Имейлът се праща</label>
+      ${seg('mail', [['gmail', 'Gmail (ти натискаш Изпрати)'], ['brevo', 'Brevo – автоматично']])}
+      <div data-for="mail:gmail" class="mut" style="margin-top:8px">Отваря Gmail с всички адреси като скрито копие и прикачената покана – натискаш само „Изпрати“.</div>
+      <div data-for="mail:brevo">
+        <div class="mut" style="margin-top:8px">Безплатно до 300 имейла на ден. Регистрация в brevo.com → SMTP &amp; API → API Keys. Подателят трябва да е потвърден в Brevo (най-добре адрес на capitalinvest.bg).</div>
+        <label class="l">Brevo ключ (API key)</label><input id="c-bk" type="password" autocomplete="off" value="${esc(c.brevoKey)}" placeholder="xkeysib-…">
+        <label class="l">Имейл на подателя</label><input id="c-mf" type="email" autocapitalize="none" value="${esc(c.mailFrom)}" placeholder="office@capitalinvest.bg">
+        <label class="l">Име на подателя</label><input id="c-mn" value="${esc(c.mailName)}">
+      </div>
+      <label class="l" style="margin-top:18px">🧪 Проба</label>
+      <div class="row"><input id="c-tp" type="tel" inputmode="tel" class="grow" placeholder="твоят телефон" value="${esc(LS.get('ntp', ''))}"><button class="btn lite sm" data-x="tsms">SMS</button></div>
+      <div class="row" style="margin-top:8px"><input id="c-te" type="email" autocapitalize="none" class="grow" placeholder="твоят имейл" value="${esc(LS.get('nte', ''))}"><button class="btn lite sm" data-x="tmail">Имейл</button></div>
+      <div class="mut" style="margin-top:6px">Ключовете се пазят само на това устройство.</div>
+      <button class="btn big" data-x="save">✓ Запиши</button>`);
+    const q = s => m.querySelector(s);
+    const show = () => m.querySelectorAll('[data-for]').forEach(el => { const [k, v] = el.dataset.for.split(':'); el.hidden = c[k] !== v; });
+    m.querySelectorAll('[data-seg]').forEach(g => g.addEventListener('click', e => { const b = e.target.closest('button[data-v]'); if (!b) return; c[g.dataset.seg] = b.dataset.v; g.querySelectorAll('button').forEach(x => x.classList.toggle('on', x === b)); show(); }));
+    show();
+    const read = () => Object.assign(c, { smsToken: q('#c-tok').value.trim(), smsFrom: q('#c-from').value.trim(), sign: q('#c-sign').value.trim(), brevoKey: q('#c-bk').value.trim(), mailFrom: q('#c-mf').value.trim(), mailName: q('#c-mn').value.trim() });
+    const save = () => { read(); LS.set('ncfg', c); };
+    q('[data-x=close]').onclick = () => m.remove();
+    q('[data-x=save]').onclick = () => { save(); m.remove(); toast('Записано ✓'); if (/\/end$/.test(location.hash)) render(true); };
+    q('[data-x=pts]').onclick = async () => {
+      save();
+      const r = await run('Проверявам…', () => nHttp('GET', smsBase(c) + '/profile', smsHdr(c), ''));
+      const j = r && jsonOf(r.body);
+      q('#c-pts').textContent = j && j.points != null ? `✅ Връзката е наред · кредит: ${j.points}` : j && j.error ? `❌ ${SMSAPI_ERR[j.error] || j.message || j.error}` : `❌ ${String((r && r.body) || '').replace(/^ERR\s*/, '').slice(0, 120) || 'няма отговор'}`;
+    };
+    q('[data-x=tsms]').onclick = async () => {
+      save(); const tel = q('#c-tp').value.trim(); LS.set('ntp', tel);
+      const p = phonesOf(tel).mob[0]; if (!p) { toast('Напиши мобилен номер (08…)', true); return; }
+      const x = await run('Пращам пробен SMS…', () => sendRunTest('sms', p, `Проба от Протоколи КИ ✓ ${c.sign}`));
+      if (x) toast(x.ok ? 'SMS-ът тръгна ✓' : '❌ ' + x.err, !x.ok);
+    };
+    q('[data-x=tmail]').onclick = async () => {
+      save(); const e = q('#c-te').value.trim(); LS.set('nte', e);
+      if (!validEmail(e)) { toast('Напиши имейл', true); return; }
+      if (c.mail !== 'brevo') { if (N && N.mailTo) N.mailTo(e, 'Проба от Протоколи КИ', 'Здравейте, това е проба.'); else location.href = `mailto:${e}?subject=Проба`; return; }
+      const x = await run('Пращам пробен имейл…', () => brevoSend(c, e, 'Проба от Протоколи КИ', `Здравейте,\n\nТова е проба – имейлите от Протоколи КИ работят.\n\n${COMPANY}`));
+      if (x) toast(x.ok ? 'Имейлът тръгна ✓' : '❌ ' + x.err, !x.ok);
+    };
+  }
+  async function sendRunTest(ch, p, text) {
+    const c = ncfg();
+    if (c.sms === 'off') return { ok: false, err: 'SMS е изключен' };
+    if (c.sms === 'sim') { if (!ANDROID) return { ok: false, err: 'SIM – само от телефона' }; if (!await simPerm()) return { ok: false, err: 'Няма разрешение за SMS' }; return simSend(p.n, text); }
+    if (!c.smsToken) return { ok: false, err: 'Липсва ключ (token)' };
+    return smsapiSend(c, p.n, text);
+  }
+
   /* ---------- Действия ---------- */
   const A = {
     login: () => doLogin(),
@@ -2672,6 +3058,9 @@
     upd: el => { el.closest('.menu').remove(); return run('Проверявам за нова версия…', () => checkUpdate(true)); },
     ordReset: el => { LS.del('border'); el.closest('.menu').remove(); render(true); toast('Входовете са по подразбиране'); },
     rec: () => recSheet(),
+    nSend: el => nSendSheet(curMid(), el.dataset.k),
+    nRun: el => nRunSheet(curMid(), el.dataset.r),
+    nCfg: el => { const mm = el.closest('.menu'); if (mm) mm.remove(); nCfgSheet(); },
     closeMenu: el => el.closest('.menu').remove(),
     reload: () => render(),
     refresh: async el => { el.closest('.menu') && el.closest('.menu').remove(); D.buildings = null; D.all = null; D.b = {}; D.m = {}; D.chair = {}; D.sec = {}; D.det = {}; D.fees = {}; await render(); toast('Обновено'); },

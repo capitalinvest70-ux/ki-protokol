@@ -67,6 +67,29 @@ ipcMain.handle('ki-update', async (e, url, name) => {
   } catch (err) { send(-1, 'Свалянето спря: ' + err.message); return 'ERR ' + err.message; }
 });
 
+/* ---------- 📣 Покани: връзка към SMSAPI / Brevo и отваряне на пощата ---------- */
+const HTTP_OK = ['https://api.smsapi.bg/', 'https://api2.smsapi.bg/', 'https://api.smsapi.com/', 'https://api2.smsapi.com/', 'https://api.brevo.com/'];
+ipcMain.handle('ki-http', (e, method, url, headers, body) => new Promise(res => {
+  if (typeof url !== 'string' || !HTTP_OK.some(p => url.startsWith(p))) return res({ status: 0, body: 'ERR Непознат адрес' });
+  let h = {}; try { h = JSON.parse(headers || '{}'); } catch (x) {}
+  const data = body ? Buffer.from(String(body), 'utf8') : null;
+  if (data) h['Content-Length'] = data.length;
+  h['User-Agent'] = 'Protokoli-KI';
+  const rq = https.request(url, { method: method || 'GET', headers: h, timeout: 60000 }, r => {
+    let out = ''; r.setEncoding('utf8');
+    r.on('data', c => { out += c; });
+    r.on('end', () => res({ status: r.statusCode, body: out }));
+  });
+  rq.on('timeout', () => rq.destroy(new Error('няма отговор')));
+  rq.on('error', err => res({ status: 0, body: 'ERR ' + err.message }));
+  if (data) rq.write(data);
+  rq.end();
+}));
+ipcMain.handle('ki-mailto', (e, bcc, subject, text) => {
+  const u = `mailto:?bcc=${encodeURIComponent(bcc || '')}&subject=${encodeURIComponent(subject || '')}&body=${encodeURIComponent(text || '')}`;
+  return shell.openExternal(u).then(() => true, () => false);
+});
+
 let win;
 
 function inject(wc) {
