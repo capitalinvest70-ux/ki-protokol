@@ -2674,7 +2674,7 @@
      В едно поле може да има 2 и повече телефона – разделят се и SMS отива на всеки.
      Отчетът (на кого е стигнало) се пази в Програма за протокол (ki_n_<събрание>) – вижда се от всички устройства.
      Ключовете за SMSAPI / Brevo се пазят само на устройството. */
-  const NCFG_DEF = { sms: ANDROID ? 'sim' : 'smsapi', smsBase: 'https://api.smsapi.bg', smsToken: '', smsFrom: '', mail: 'gmail', brevoKey: '', mailFrom: '', mailName: 'Капитал Инвест', sign: 'Капитал Инвест', pdf: true };
+  const NCFG_DEF = { sms: ANDROID ? 'sim' : 'smsapi', smsBase: 'https://api.smsapi.bg', smsToken: '', smsFrom: '', mail: 'gmail', brevoKey: '', mailFrom: '', mailName: 'Капитал Инвест', sign: 'Капитал Инвест', pdf: true, latin: false };
   const ncfg = () => Object.assign({}, NCFG_DEF, LS.get('ncfg', {}));
   const NK = { invite: ['✉️', 'Покана за събранието'], remind: ['⏰', 'Напомняне'], done: ['📌', 'Протоколът е готов'], custom: ['💬', 'Съобщение'] };
   const nId = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
@@ -2722,26 +2722,65 @@
   }
 
   function nTexts(d, kind) {
+    const fit = smsFit(d, kind, !!ncfg().latin);
     const m = d.meeting, b = d.building || {}, sign = ncfg().sign || 'Капитал Инвест';
     const where = b.address || b.name || '', dt = bgDate(m.meeting_date), tm = String(m.meeting_time || '').slice(0, 5), pl = m.place || '';
     const ag = (d.agenda || []).map(a => `${a.item_no}. ${a.title}`).join('\n');
     const hi = 'Уважаеми собственици,\n\n', bye = `\n\nС уважение,\n${COMPANY}`;
     if (kind === 'invite') return {
-      sms: `Покана: общо събрание на етажната собственост ${where} на ${dt} от ${tm} ч., ${pl}. Дневният ред е на входа. ${sign}`,
+      sms: fit,
       subj: `Покана за общо събрание – ${where} – ${dt}`,
       mail: `${hi}На основание чл. 13 от ЗУЕС Ви каним на общо събрание на етажната собственост на адрес ${where}, което ще се проведе на ${dt} от ${tm} ч., място: ${pl}.\n\nДневен ред:\n${ag}\n\nПри липса на кворум събранието ще се проведе един час по-късно, на същото място и при същия дневен ред.\n\nМоля, носете документ за самоличност. Ако не можете да присъствате, може да упълномощите друго лице с писмено пълномощно.${bye}` };
     if (kind === 'remind') return {
-      sms: `Напомняне: ${dt} от ${tm} ч. – общо събрание на етажната собственост ${where}, ${pl}. Очакваме Ви! ${sign}`,
+      sms: fit,
       subj: `Напомняне: общо събрание – ${where} – ${dt} от ${tm} ч.`,
       mail: `${hi}Напомняме Ви, че на ${dt} от ${tm} ч., място: ${pl}, ще се проведе общото събрание на етажната собственост на адрес ${where}.\n\nДневен ред:\n${ag}\n\nОчакваме Ви!${bye}` };
     if (kind === 'done') return {
-      sms: `Протоколът от общото събрание на етажната собственост ${where} от ${dt} е готов и е поставен на входа. ${sign}`,
+      sms: fit,
       subj: `Протокол от общото събрание – ${where} – ${dt}`,
       mail: `${hi}Протоколът от общото събрание на етажната собственост на адрес ${where}, проведено на ${dt}, е изготвен и е поставен на видно място на входа.\n\nПри въпроси – свържете се с нас.${bye}` };
-    return { sms: ` ${sign}`, subj: `${where} – съобщение`, mail: `${hi}${bye}` };
+    return { sms: fit, subj: `${where} – съобщение`, mail: `${hi}${bye}` };
   }
   // кирилицата: 70 знака в един SMS, 67 в дълъг; латиница: 160 / 153
   const smsParts = t => { const uc = /[^\x0A\x0D\x20-\x7E]/.test(t), n = t.length; return { n, parts: !n ? 0 : uc ? (n <= 70 ? 1 : Math.ceil(n / 67)) : (n <= 160 ? 1 : Math.ceil(n / 153)), uc }; };
+  // Латиница: 160 знака в 1 SMS вместо 70 (по Закона за транслитерацията)
+  const TRL = { а: 'a', б: 'b', в: 'v', г: 'g', д: 'd', е: 'e', ж: 'zh', з: 'z', и: 'i', й: 'y', к: 'k', л: 'l', м: 'm', н: 'n', о: 'o', п: 'p', р: 'r', с: 's', т: 't', у: 'u', ф: 'f', х: 'h', ц: 'ts', ч: 'ch', ш: 'sh', щ: 'sht', ъ: 'a', ь: 'y', ю: 'yu', я: 'ya', ѝ: 'i' };
+  const translit = t => String(t || '').replace(/[„“”«»]/g, '"').replace(/[–—]/g, '-').replace(/№/g, 'No').replace(/[Ѐ-ӿѝ]/g, ch => {
+    const lo = ch.toLowerCase(), r = TRL[lo]; if (r == null) return ''; return ch === lo ? r : r.charAt(0).toUpperCase() + r.slice(1); });
+  // Текстът на SMS-а – най-подробният вариант, който се събира в 1 SMS (70 знака на кирилица, 160 на латиница)
+  function smsFit(d, kind, latin) {
+    const m = d.meeting, b = d.building || {}, max = latin ? 160 : 70, cfg = ncfg();
+    const dd = bgDate(m.meeting_date).slice(0, 5), tm = String(m.meeting_time || '').slice(0, 5);
+    const p = String(m.place || '').replace(/пред входа на етажната собственост/i, 'пред входа').replace(/етажната собственост/gi, 'ЕС').replace(/\s+/g, ' ').trim();
+    const cut = x => String(x || '').replace(/^\s*(гр\.|град|с\.)\s*[^,]+,\s*/i, '').replace(/^жилищна сграда\s*/i, '').replace(/\s+/g, ' ').trim();
+    const al = [cut(b.address), cut(b.name)].filter(Boolean).sort((x, y) => x.length - y.length);
+    let a = al[0] || '';
+    const signs = [...new Set([cfg.sign || 'Капитал Инвест', 'Капитал Инвест', 'КИ'])];
+    const V = {
+      invite: [
+        (a, s) => `Покана: общо събрание на етажната собственост ${a} на ${dd} от ${tm} ч., ${p}. Дневният ред е на входа. ${s}`,
+        (a, s) => `Покана: общо събрание на ЕС ${a} на ${dd} от ${tm}ч, ${p}. ${s}`,
+        (a, s) => `Общо събрание ЕС ${a} на ${dd} от ${tm}ч, ${p}. ${s}`,
+        (a, s) => `Събрание ЕС ${a} ${dd} ${tm}ч, ${p}. ${s}`,
+        (a, s) => `Събрание ЕС ${a} ${dd} ${tm}ч. ${s}`],
+      remind: [
+        (a, s) => `Напомняне: общо събрание на етажната собственост ${a} на ${dd} от ${tm} ч., ${p}. Очакваме Ви! ${s}`,
+        (a, s) => `Напомняне: събрание ЕС ${a} ${dd} ${tm}ч, ${p}. ${s}`,
+        (a, s) => `Напомняне: събрание ЕС ${a} ${dd} ${tm}ч. ${s}`,
+        (a, s) => `Събрание ЕС ${a} ${dd} ${tm}ч. ${s}`],
+      done: [
+        (a, s) => `Протоколът от общото събрание на етажната собственост ${a} от ${dd} е готов и е поставен на входа. ${s}`,
+        (a, s) => `Протоколът от събранието на ЕС ${a} е на входа. ${s}`,
+        (a, s) => `Протокол от събрание ЕС ${a} - на входа. ${s}`],
+      custom: [(a, s) => s],
+    }[kind] || [(a, s) => s];
+    const out = t => (latin ? translit(t) : t).replace(/\s+/g, ' ').replace(/\s+([.,])/g, '$1').trim();
+    for (const sg of signs) for (const v of V) { const t = out(v(a, sg)); if (t.length <= max) return t; }   // първо с пълния подпис
+    // и най-краткият не стига – съкращаваме адреса
+    const last = V[V.length - 1];
+    while (a.length > 3) { a = a.slice(0, -1); const t = out(last(a.trim() + '.', 'КИ')); if (t.length <= max) return t; }
+    return out(last('', 'КИ')).slice(0, max);
+  }
 
   /* --- връзка навън: страницата не може сама, минава през приложението --- */
   function nHttp(method, url, headers, body) {
@@ -2912,7 +2951,8 @@
       <div class="mut">${esc((d.building || {}).name || '')} · ${bgDate(d.meeting.meeting_date)} ${esc(String(d.meeting.meeting_time || '').slice(0, 5))}</div>
       <label class="row" style="margin-top:14px;gap:12px;font-weight:700">${cb('n-sms', smsOk && rc.sms.length, !smsOk || !rc.sms.length)} 📱 SMS до ${rc.sms.length} номера</label>
       <div class="mut" style="margin:2px 0 6px 40px">${smsOk ? via : cfg.sms === 'off' ? 'SMS е изключен в настройките' : 'на компютъра – само през SMSAPI.bg (⚙️ Настройки)'}</div>
-      <textarea id="n-st" rows="4">${esc(t.sms)}</textarea><div class="mut" id="n-cnt"></div>
+      <textarea id="n-st" rows="3">${esc(t.sms)}</textarea><div class="mut" id="n-cnt"></div>
+      <label class="row" style="margin-top:6px;gap:12px;font-weight:600">${cb('n-lat', cfg.latin)} 🔤 Латиница – 160 знака в 1 SMS (на кирилица са 70)</label>
       <label class="row" style="margin-top:14px;gap:12px;font-weight:700">${cb('n-mail', rc.mail.length, !rc.mail.length)} 📧 Имейл до ${rc.mail.length}</label>
       <div class="mut" style="margin:2px 0 6px 40px">${viaM}</div>
       <label class="l">Тема</label><input id="n-subj" value="${esc(t.subj)}">
@@ -2927,8 +2967,11 @@
       <button class="btn big gold" data-x="go">📣 Изпрати</button>
       <div class="grid2"><button class="btn out" data-x="cfg">⚙️ Настройки</button><button class="btn out" data-x="close">Отказ</button></div>`);
     const q = s => m.querySelector(s), st = q('#n-st');
-    const cnt = () => { const p = smsParts(st.value.trim()); q('#n-cnt').textContent = `${p.n} знака · ${p.parts} SMS на човек${rc.sms.length ? ` · общо ${p.parts * rc.sms.length} SMS` : ''}${p.uc ? ' (кирилица: 70 знака в 1 SMS)' : ''}`; };
+    const cnt = () => { const p = smsParts(st.value.trim()), el = q('#n-cnt');
+      el.innerHTML = `${p.n} от ${p.uc ? 70 : 160} знака · <b>${p.parts} SMS</b> на човек${rc.sms.length ? ` · общо ${p.parts * rc.sms.length} SMS` : ''}${p.parts > 1 ? ' – <b>съкрати текста или избери латиница</b>' : ' ✓'}`;
+      el.style.color = p.parts > 1 ? 'var(--bad)' : 'var(--ok)'; };
     st.addEventListener('input', cnt); cnt();
+    q('#n-lat').onchange = () => { const lat = q('#n-lat').checked; LS.set('ncfg', Object.assign(LS.get('ncfg', {}), { latin: lat })); st.value = smsFit(d, kind, lat); cnt(); };
     q('[data-x=close]').onclick = () => m.remove();
     q('[data-x=cfg]').onclick = () => { m.remove(); nCfgSheet(); };
     q('[data-x=go]').onclick = async () => {
