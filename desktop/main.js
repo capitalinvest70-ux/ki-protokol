@@ -68,7 +68,7 @@ ipcMain.handle('ki-update', async (e, url, name) => {
 });
 
 /* ---------- 📣 Покани: връзка към SMSAPI / Brevo и отваряне на пощата ---------- */
-const HTTP_OK = ['https://api.smsapi.bg/', 'https://api2.smsapi.bg/', 'https://api.smsapi.com/', 'https://api2.smsapi.com/', 'https://api.brevo.com/'];
+const HTTP_OK = ['https://api.smsapi.bg/', 'https://api2.smsapi.bg/', 'https://api.smsapi.com/', 'https://api2.smsapi.com/', 'https://api.brevo.com/', 'https://capitalinvest.bg/api/'];
 ipcMain.handle('ki-http', (e, method, url, headers, body) => new Promise(res => {
   if (typeof url !== 'string' || !HTTP_OK.some(p => url.startsWith(p))) return res({ status: 0, body: 'ERR Непознат адрес' });
   let h = {}; try { h = JSON.parse(headers || '{}'); } catch (x) {}

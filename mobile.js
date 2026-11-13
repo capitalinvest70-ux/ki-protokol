@@ -1323,6 +1323,7 @@
       if (my !== rendering) return;
       if (!D.user) return scrLogin();
       if (p[0] === 'login') return go('#/', true);
+      if (p[0] === 'adm') return p[1] ? await scrAdmEs(p[1], keep) : await scrAdm(keep);
       if (p[0] === 'b' && p[2] === 'new') return await scrNew(+p[1]);
       if (p[0] === 'b') return await scrBuilding(+p[1], keep);
       if (p[0] === 'm' && p[2] === 'p') return await scrPoint(+p[1], +p[3], keep);
@@ -1391,7 +1392,7 @@
       ${rec.length && !q ? `<h3>Последно отваряни</h3>${rec.map(bItem).join('')}<h3>Всички входове (${list.length})</h3>` : ''}
       ${q ? '' : '<div class="hint">↕️ Задръж вход и го плъзни, за да го преместиш</div>'}
       <div id="k-bl">${bList(list, q)}</div>
-      ${q ? '' : '<button class="btn out" data-act="newBuilding" style="margin-top:14px">➕ Нова етажна собственост</button>'}`, keep);
+      ${q ? '' : '<button class="btn out" data-act="newBuilding" style="margin-top:14px">➕ Нова етажна собственост</button><button class="btn lite" data-go="#/adm">🏢 Админ – всички ЕС, длъжници, хора</button>'}`, keep);
   }
 
   // Нова етажна собственост: един вход, еднакъв брой апартаменти на етаж (няколко входа – в пълната версия)
@@ -1407,6 +1408,7 @@
       <div><label class="l">Асансьор</label><div class="seg" id="nb-el"><button class="on" data-v="1">Има</button><button data-v="0">Няма</button></div></div></div>
       <div class="okbox" id="nb-sum" style="margin-top:12px"></div>
       <div class="mut" style="margin-top:6px">Имената на собствениците и идеалните части се попълват после в „Хора и такси“. Блок с няколко входа се създава от пълната версия.</div>
+      ${admOn() ? `<label class="row" style="margin-top:10px;gap:10px;font-weight:700"><input id="nb-adm" type="checkbox" ${admCfg().both !== false ? 'checked' : ''} style="width:28px;height:28px">🏢 Създай я и в admin.capitalinvest.bg</label>` : ''}
       <button class="btn big ok" data-x="ok">✓ Създай</button><button class="btn out" data-x="no">Отказ</button>`);
     const v = id => m.querySelector(id).value.trim(), n = id => Math.max(0, Math.round(Number(m.querySelector(id).value) || 0));
     const sum = () => { const fl = n('#nb-fl'), pf = n('#nb-pf'), st = Math.max(1, n('#nb-st')); m.querySelector('#nb-sum').textContent = fl && pf ? `Ще се създадат ${fl * pf} апартамента: от №${st} до №${st + fl * pf - 1}` : 'Въведете етажи и апартаменти на етаж'; };
@@ -1421,10 +1423,13 @@
       const body = { name, address: v('#nb-addr'), identifier: v('#nb-id'), floors: fl, units_per_floor: pf, distribution_mode: 'equal', single_start_no: st,
         floor_counts: Array.from({ length: fl }, (_, i) => ({ floor: i + 1, count: pf })), entrance_mode: 'single', entrances: [],
         next_meeting_number: 1, has_elevator: elev, has_common_rooms: false, common_rooms_count: 0 };
-      const r = await run('Създавам…', () => post('/api/buildings', body));
+      const both = !!(m.querySelector('#nb-adm') && m.querySelector('#nb-adm').checked);
+      if (m.querySelector('#nb-adm')) LS.set('adm', { ...admCfg(), both });
+      const r = await run('Създавам…', async () => { const x = await post('/api/buildings', body); if (both && x && x.id) { try { await admCreateFromBuilding(x.id); x.adm = true; } catch (e) { x.admErr = e.message; } } return x; });
       if (!r) return;
       D.buildings = null; D.all = null; m.remove();
-      success('Етажната собственост е създадена');
+      if (r.admErr) toast('Създадена в програмата, но не и в админа: ' + r.admErr, true);
+      else success(r.adm ? 'Създадена и на двете места' : 'Етажната собственост е създадена');
       if (r.id) go('#/b/' + r.id); else render(true);
     };
   }
@@ -1456,7 +1461,8 @@
         : '<div class="empty">Още няма събрания в този вход</div>'}
       <div class="card" style="margin-top:16px"><div class="row"><div class="grow"><div class="ttl">${(d.units || []).length} обекта</div>
       <div class="mut">${esc(b.identifier || '')}${b.floors ? ' · ' + b.floors + ' етажа' : ''}</div></div>
-      <button class="btn out sm" data-act="full" data-b="${id}">Редакция ›</button></div></div>`, keep);
+      <button class="btn out sm" data-act="full" data-b="${id}">Редакция ›</button></div></div><div id="k-adm"></div>`, keep);
+    admCardHtml(id).then(h => { const el = root.querySelector('#k-adm'); if (el && location.hash === '#/b/' + id) el.innerHTML = h; }).catch(() => {});
   }
 
   /* ---------- Ново събрание ---------- */
@@ -1929,6 +1935,8 @@
       <div class="grid2" style="margin-top:4px"><div><label class="l">📧 Имейл</label><input id="k-em" type="email" inputmode="email" autocapitalize="none" value="${esc(contact.email || '')}" placeholder="за копие от протокола"></div>
       <div><label class="l">📞 Телефон</label><input id="k-tel" type="tel" inputmode="tel" value="${esc(contact.phone || u.phone || '')}" placeholder="08…"></div></div>
       <div class="mut" style="margin-top:4px">По закон протоколът се изпраща по имейл на тези, които са дали имейл.</div>
+      <div class="grid2" style="margin-top:4px"><div><label class="l">👪 Брой живущи</label><input id="k-res" type="number" inputmode="numeric" min="0" max="30" value="${num(u.residents_count)}"></div>
+      <div class="mut" style="align-self:end;padding-bottom:10px">${admOn() ? '🏢 Записва се и в admin.capitalinvest.bg' : ''}</div></div>
       <button class="btn big ok" data-sh="save">✓ ${a ? 'Запази' : 'Присъства – запази'}</button>
       ${a && !closed ? '<button class="btn out" data-sh="remove" style="color:var(--bad)">Не присъства – махни</button>' : ''}
       <button class="btn lite" data-sh="cancel">Отказ</button>`);
@@ -1967,14 +1975,15 @@
         if (proxyCount(d, name, unitId) >= 3) { toast(`${name} вече представлява 3 обекта – по закон не може повече`, true); return; }
       }
       const email = m.querySelector('#k-em').value.trim(), tel = m.querySelector('#k-tel').value.trim();
+      const resIn = m.querySelector('#k-res').value.trim(), res = resIn === '' ? num(u.residents_count) : Math.max(0, Math.round(num(resIn)));
       if (email && !validEmail(email)) { m.querySelector('#k-em').classList.add('need'); toast('Имейлът не изглежда правилен', true); return; }
       const img = pad.png();
       const ok = await run('Записвам…', async () => {
         if (email !== (contact.email || '') || tel !== (contact.phone || '')) await putContact(unitId, { email, phone: tel, at: stamp() });
-        if (tel && tel !== (u.phone || '')) {
-          // телефонът отива и в Програма за протокол (картата на обекта)
-          await patch('/api/units/' + unitId, { unit_no: u.unit_no, floor: u.floor, entrance: u.entrance || '', type: u.type, owner_name: u.owner_name || '', phone: tel,
-            ideal_parts: num(u.ideal_parts), residents_count: num(u.residents_count), dogs_count: num(u.dogs_count), common_rooms_used: num(u.common_rooms_used), uses_elevator: u.uses_elevator == null ? true : !!num(u.uses_elevator) }).catch(() => {});
+        if ((tel && tel !== (u.phone || '')) || res !== num(u.residents_count)) {
+          // телефонът и живущите отиват и в Програма за протокол (картата на обекта)
+          await patch('/api/units/' + unitId, { unit_no: u.unit_no, floor: u.floor, entrance: u.entrance || '', type: u.type, owner_name: u.owner_name || '', phone: tel || u.phone || '',
+            ideal_parts: num(u.ideal_parts), residents_count: res, dogs_count: num(u.dogs_count), common_rooms_used: num(u.common_rooms_used), uses_elevator: u.uses_elevator == null ? true : !!num(u.uses_elevator) }).catch(() => {});
         }
         if (!closed) await saveAtt(mid, unitId, { person_name: name, status, proxy_auth_type: ptype });
         if (img) await putSig(mid, 'u' + unitId, { img, name, at: stamp() });
@@ -1982,6 +1991,7 @@
         if (status !== 'Пълномощник' || ptype !== 'written') await putSig(mid, 'px' + unitId, null);
         await loadMeeting(mid, true); return true;
       });
+      if (ok && admOn()) admQueue({ bid: num(d.meeting && d.meeting.building_id), unit_no: u.unit_no, floor: u.floor, residents: res, owner: status !== 'Пълномощник', name, phone: tel, email });
       if (ok) { m.remove(); render(true); if (!img && !sigs['u' + unitId]) toast('Записано – без подпис'); else toast('Записано ✓'); }
     };
   }
@@ -2657,6 +2667,7 @@
     sheet(`<div class="row" style="margin-bottom:6px"><div class="grow"><div class="ttl">${esc((D.user && (D.user.display_name || D.user.username)) || 'Протоколи КИ')}</div><div class="mut">Протоколи КИ</div></div>
       <button class="btn lite sm" data-act="closeMenu">✕</button></div>
       <label class="l">Големина на буквите</label><div class="grid2"><button class="btn lite" data-act="fs" data-v="-1" style="margin:0">А−</button><button class="btn lite" data-act="fs" data-v="1" style="margin:0">А+</button></div>
+      <button class="btn lite" data-go="#/adm">🏢 Админ – admin.capitalinvest.bg</button>
       <button class="btn lite" data-act="refresh">🔄 Обнови данните</button>
       <button class="btn lite" data-act="nCfg">📣 SMS и имейл – настройки</button>
       ${window.KIAndroid || window.KIDesktop ? '<button class="btn lite" data-act="upd">🚀 Провери за нова версия</button><div class="mut k-ver" style="text-align:center;margin-top:6px"></div>' : ''}
@@ -3135,6 +3146,375 @@
   }
 
   /* ---------- Действия ---------- */
+
+  /* ---------- 🏢 admin.capitalinvest.bg – управление на етажните собствености от приложението ----------
+     Връзката минава през телефона/компютъра (nHttp), със същия имейл и парола като в админа.
+     Връзка вход ↔ ЕС: ki_adm_links в Програма за протокол (общо за всички устройства).
+     Присъстващите (име, телефон, имейл, брой живущи) отиват и в админа: обновява се човекът със същото име
+     на обекта, а ако няма такъв – добавя се като „Собственик“. Живущите се пишат на обекта (inhabitants).
+     Ако няма интернет или вход, промяната чака в опашка (adm_q) и се праща при следващата възможност. */
+  const ADM_API = 'https://capitalinvest.bg';
+  const ADM_WEB = 'https://admin.capitalinvest.bg';
+  const AD = { es: null, esAt: 0, props: {}, persons: {}, links: null, ents: null };
+  const admCfg = () => LS.get('adm', { email: '', pass: '', entity: '', both: true });
+  const admOn = () => { const c = admCfg(); return !!(c.email && c.pass); };
+  const admT2P = { 'апартамент': 'apartment', 'студио': 'apartment', 'офис': 'office', 'гараж': 'garage', 'маза': 'basement', 'таванска стая': 'attic', 'магазин': 'commercial_object', 'ателие': 'other', 'друг': 'other' };
+  const admP2T = { apartment: 'апартамент', office: 'офис', garage: 'гараж', basement: 'маза', common_basement: 'маза', attic: 'таванска стая', commercial_object: 'магазин' };
+  const admNo = s => { const m = String(s == null ? '' : s).match(/\d+/); return m ? +m[0] : null; };
+  const admList = j => Array.isArray(j) ? j : (j && j.results) || [];
+  const digits = s => String(s || '').replace(/\D/g, '').replace(/^359/, '0');
+
+  async function admRaw(method, path, body, tok) {
+    const h = { 'Content-Type': 'application/json', Accept: 'application/json' };
+    if (tok) h.Authorization = 'Bearer ' + tok;
+    const r = await nHttp(method, ADM_API + path, h, body === undefined ? '' : JSON.stringify(body));
+    if (!r.status) throw new Error(String(r.body || '').replace(/^ERR\s*/, '') || 'Няма връзка с admin.capitalinvest.bg');
+    let j = null; try { j = r.body ? JSON.parse(r.body) : {}; } catch (e) { j = { detail: r.body }; }
+    return { status: r.status, j };
+  }
+  async function admLogin(force) {
+    const c = admCfg(), t = LS.get('adm_tok', null);
+    if (!force && t && t.access && t.email === c.email) return t.access;
+    if (!force && t && t.refresh && t.email === c.email) {
+      const r = await admRaw('POST', '/api/user/token/refresh/', { refresh: t.refresh }).catch(() => null);
+      if (r && r.status < 300 && r.j.access) { LS.set('adm_tok', { ...t, access: r.j.access }); return r.j.access; }
+    }
+    if (!c.email || !c.pass) throw new Error('Въведи имейл и парола за admin.capitalinvest.bg (меню ⋮ → 🏢 Админ)');
+    const r = await admRaw('POST', '/api/user/token/', { email: c.email, password: c.pass });
+    if (r.status >= 300 || !r.j.access) throw new Error('Админът не прие имейла/паролата');
+    LS.set('adm_tok', { access: r.j.access, refresh: r.j.refresh, email: c.email });
+    return r.j.access;
+  }
+  async function adm(method, path, body) {
+    let tok = await admLogin();
+    let r = await admRaw(method, path, body, tok);
+    if (r.status === 401) { LS.del('adm_tok'); tok = await admLogin(true); r = await admRaw(method, path, body, tok); }
+    if (r.status >= 400) {
+      const j = r.j || {}; let msg = j.detail || j.message || j.error;
+      if (!msg && typeof j === 'object') msg = Object.entries(j).map(([k, v]) => k + ': ' + (Array.isArray(v) ? v.join(' ') : typeof v === 'object' ? JSON.stringify(v) : v)).join('; ');
+      throw new Error('Админ: ' + String(msg || ('грешка ' + r.status)).slice(0, 200));
+    }
+    return r.j;
+  }
+  async function admAll(path) {
+    const out = []; const sep = path.includes('?') ? '&' : '?';
+    for (let p = 1; p <= 40; p++) { const j = await adm('GET', `${path}${sep}page=${p}&per_page=100`); const l = admList(j); out.push(...l); if (Array.isArray(j) || !j.next || !l.length) break; }
+    return out;
+  }
+  async function admEntity() {
+    const c = admCfg();
+    if (!AD.ents) AD.ents = admList(await adm('GET', '/api/user/entity'));
+    const pick = AD.ents.find(e => String(e.id) === String(c.entity)) || AD.ents.find(e => !/кас/i.test(e.name || e.title || '')) || AD.ents[0];
+    if (!pick) throw new Error('Админ: няма фирма (entity) за този потребител');
+    return pick.id;
+  }
+  async function admES(force) {
+    if (!AD.es || force || Date.now() - AD.esAt > 5 * 60e3) { const ent = await admEntity(); AD.es = (await admAll(`/api/es/?entity=${ent}&ordering=title`)).filter(e => !e.is_archived); AD.esAt = Date.now(); }
+    return AD.es;
+  }
+  async function admProps(esId, force) {
+    if (!AD.props[esId] || force) AD.props[esId] = (await admAll(`/api/es-properties/?es=${esId}&ordering=number`)).filter(p => !p.is_archived);
+    return AD.props[esId];
+  }
+  async function admPersons(esId, force) {
+    if (!AD.persons[esId] || force) AD.persons[esId] = (await admAll(`/api/es-related-persons/?es=${esId}`)).filter(p => !p.is_archived);
+    return AD.persons[esId];
+  }
+  const admPid = p => p.es_property || (p.property_details && p.property_details.property_id);
+
+  /* Връзки вход ↔ ЕС */
+  async function admLinks(force) {
+    if (!AD.links || force) { AD.links = (await REM.get('ki_adm_links').catch(() => null)) || LS.get('adm_links', {}) || {}; LS.set('adm_links', AD.links); }
+    return AD.links;
+  }
+  async function admLink(bid, esId) {
+    const L = await admLinks(true);
+    Object.keys(L).forEach(k => { if (L[k] === esId) delete L[k]; });
+    if (esId) L[bid] = esId; else delete L[bid];
+    AD.links = L; LS.set('adm_links', L);
+    await REM.set('ki_adm_links', L).catch(() => {});
+  }
+  const admBidOf = esId => Object.keys(AD.links || {}).find(k => AD.links[k] === esId);
+  function admGuess(b, list) {
+    const w = norm(b.name).split(' ').filter(x => x.length > 1);
+    const sc = e => { const t = norm((e.title || '') + ' ' + (e.address || '')); return w.filter(x => t.includes(x)).length / (w.length || 1); };
+    return list.map(e => [e, sc(e)]).filter(x => x[1] > 0.4).sort((a, c) => c[1] - a[1]).map(x => x[0]);
+  }
+
+  /* Опашка: присъстващ → админа */
+  let admBusy = false;
+  function admQueue(job) { const q = LS.get('adm_q', []); q.push({ ...job, at: Date.now() }); LS.set('adm_q', q); return admFlush(); }
+  async function admFlush(say) {
+    if (admBusy || !admOn()) return;
+    admBusy = true; let ok = 0, left = [];
+    try {
+      const q = LS.get('adm_q', []); if (!q.length) return;
+      LS.set('adm_q', []);
+      const L = await admLinks();
+      for (let i = 0; i < q.length; i++) {
+        const job = q[i], esId = L[job.bid];
+        if (!esId) { if (Date.now() - job.at < 30 * 864e5) left.push(job); continue; }
+        try { await admApply(esId, job); ok++; }
+        catch (e) { left.push(job); if (/връзка|няма отговор|Unable|timeout/i.test(e.message)) { left.push(...q.slice(i + 1)); break; } if (say) toast(e.message, true); }
+      }
+    } finally {
+      if (left.length) LS.set('adm_q', [...left, ...LS.get('adm_q', [])]);
+      admBusy = false;
+      if (ok && say !== false) toast(`🏢 Записано и в админа (${ok})`);
+    }
+  }
+  async function admApply(esId, job) {
+    const props = await admProps(esId, true);
+    const no = admNo(job.unit_no);
+    let cand = props.filter(p => num(p.number) === no);
+    if (cand.length > 1 && job.floor != null) cand = cand.filter(p => num(p.floor) === num(job.floor)).concat(cand);
+    const p = cand[0];
+    if (!p) throw new Error(`Админ: няма обект №${job.unit_no} в тази ЕС`);
+    if (job.residents != null && job.residents !== '' && num(job.residents) !== num(p.inhabitants)) await adm('PATCH', `/api/es-properties/${p.id}/`, { inhabitants: num(job.residents) });
+    if (job.owner && job.name) {
+      const persons = (await admPersons(esId, true)).filter(x => admPid(x) === p.id);
+      const same = persons.find(x => norm(x.full_name) === norm(job.name));
+      if (same) {
+        const ch = {};
+        if (job.phone && digits(job.phone) !== digits(same.phone_number)) ch.phone_number = job.phone;
+        if (job.email && job.email.toLowerCase() !== String(same.email || '').toLowerCase()) ch.email = job.email;
+        if (Object.keys(ch).length) await adm('PATCH', `/api/es-related-persons/${same.id}`, ch);
+      } else {
+        await adm('POST', '/api/es-related-persons/', { full_name: job.name, relationship_type: 'owner', email: job.email || '', phone_number: job.phone || '', has_client_app_access: false, is_using_property: true, is_active: true, es_property: p.id, entity: await admEntity() });
+      }
+      delete AD.persons[esId];
+    }
+  }
+
+  /* Създаване: вход от програмата → нова ЕС в админа (обекти + собственици) */
+  async function admCreateFromBuilding(bid) {
+    const d = await loadBuilding(bid, true), b = d.building, units = d.units || [];
+    const ent = await admEntity();
+    const city = (String(b.address || '').match(/гр\.?\s*([А-Яа-я\- ]+?)(,|$)/) || [])[1] || '';
+    busyText('Създавам ЕС в админа…');
+    const es = await adm('POST', '/api/es/', { entity: ent, title: b.name, address: b.address || '', city: city.trim(), floors: num(b.floors) || null });
+    await admLink(bid, es.id);
+    let n = 0, used = new Set();
+    for (const u of units) {
+      let no = admNo(u.unit_no); if (no == null || used.has(no)) { no = 1; while (used.has(no)) no++; }
+      used.add(no);
+      busyText(`Обекти в админа: ${++n} от ${units.length}…`);
+      const p = await adm('POST', '/api/es-properties/', { es: es.id, number: no, property_type: admT2P[u.type] || 'apartment', ownership: 'privately_owned', floor: num(u.floor),
+        common_parts_percent: num(u.ideal_parts) ? (Math.round(num(u.ideal_parts) * 1000) / 1000).toFixed(3) : null, inhabitants: num(u.residents_count), pets: num(u.dogs_count),
+        elevator_usage: u.uses_elevator == null ? true : !!num(u.uses_elevator), description: String(u.unit_no) !== String(no) ? 'Обект ' + u.unit_no : '' });
+      if (u.owner_name) await adm('POST', '/api/es-related-persons/', { full_name: u.owner_name, relationship_type: 'owner', email: '', phone_number: u.phone || '', has_client_app_access: false, is_using_property: true, is_active: true, es_property: p.id, entity: ent }).catch(() => {});
+    }
+    AD.es = null;
+    return es;
+  }
+
+  /* Обратно: ЕС от админа → нов вход в Програма за протокол */
+  async function admImportEs(esId) {
+    const es = (await admES()).find(e => e.id === esId) || await adm('GET', `/api/es/${esId}`);
+    const [props, persons] = await Promise.all([admProps(esId, true), admPersons(esId, true)]);
+    if (!props.length) throw new Error('В тази ЕС в админа няма обекти');
+    const sorted = [...props].sort((a, c) => num(a.floor) - num(c.floor) || num(a.number) - num(c.number));
+    const owner = p => persons.filter(x => admPid(x) === p.id && x.relationship_type === 'owner' && x.is_active !== false);
+    const body = u => ({ unit_no: String(u.number), floor: num(u.floor), entrance: '', type: admP2T[u.property_type] || 'друг',
+      owner_name: owner(u).map(x => x.full_name).join(', '), phone: owner(u).map(x => x.phone_number).filter(Boolean).join(', '),
+      ideal_parts: num(u.common_parts_percent), residents_count: num(u.inhabitants), dogs_count: num(u.pets), common_rooms_used: 0, uses_elevator: u.elevator_usage !== false });
+    busyText('Създавам входа в програмата…');
+    const floors = new Set(sorted.map(p => num(p.floor))).size || 1;
+    const r = await post('/api/buildings', { name: es.title, address: [es.address, es.city].filter(Boolean).join(', '), identifier: '', floors: 1, units_per_floor: 1, distribution_mode: 'equal', single_start_no: 1,
+      floor_counts: [{ floor: 1, count: 1 }], entrance_mode: 'single', entrances: [], next_meeting_number: 1, has_elevator: sorted.some(p => p.elevator_usage !== false), has_common_rooms: false, common_rooms_count: 0 });
+    const bid = r.id || (r.building && r.building.id);
+    if (!bid) throw new Error('Програмата не върна номер на новия вход');
+    const d = await loadBuilding(bid, true);
+    const first = (d.units || [])[0];
+    for (let i = 0; i < sorted.length; i++) {
+      busyText(`Обекти: ${i + 1} от ${sorted.length}…`);
+      if (i === 0 && first) await patch('/api/units/' + first.id, body(sorted[0]));
+      else await post(`/api/buildings/${bid}/units`, body(sorted[i]));
+    }
+    if (floors > 1) await patch('/api/buildings/' + bid, { floors }).catch(() => {});
+    await admLink(bid, esId);
+    D.buildings = null; delete D.b[bid];
+    return bid;
+  }
+
+  /* ---------- Екрани ---------- */
+  function admLoginHtml(msg) {
+    const c = admCfg();
+    return `<div class="card"><h2>🏢 Вход в admin.capitalinvest.bg</h2>
+      <div class="mut">Същият имейл и парола като в админа. Пазят се само на това устройство.</div>
+      ${msg ? `<div class="mut" style="color:var(--bad);margin-top:8px">${esc(msg)}</div>` : ''}
+      <label class="l">Имейл</label><input id="ad-em" type="email" inputmode="email" autocapitalize="none" value="${esc(c.email)}">
+      <label class="l">Парола</label><input id="ad-pw" type="password" value="${esc(c.pass)}">
+      <button class="btn big ok" data-act="admSave">✓ Влез</button></div>`;
+  }
+  async function scrAdm(keep) {
+    top('🏢 Админ', 'admin.capitalinvest.bg', '#/'); tabs();
+    if (!admOn()) return html(admLoginHtml(), keep);
+    if (!AD.es) html('<div class="empty">Зареждам етажните собствености…</div>');
+    let list;
+    try { [list] = await Promise.all([admES(), admLinks()]); } catch (e) { return html(admLoginHtml(e.message), keep); }
+    const q = SS.get('aq2', ''), nq = norm(q);
+    const f = nq ? list.filter(e => nq.split(' ').every(w => norm(e.title + ' ' + (e.address || '')).includes(w))) : list;
+    const debt = list.reduce((s, e) => s + num(e.total_outstanding_charges), 0), qn = LS.get('adm_q', []).length;
+    html(`${heroHtml(`<div>${wordmark('УПРАВЛЕНИЕ НА ЕТАЖНИ СОБСТВЕНОСТИ')}<div class="mut" style="margin-top:8px;font-weight:600">${list.length} ЕС · неплатени ${debt.toFixed(2)} €</div></div>`)}
+      ${qn ? `<div class="card"><div class="row"><div class="grow"><div class="ttl">⏳ ${qn} промени чакат за админа</div><div class="mut">Пращат се сами, когато има връзка</div></div><button class="btn out sm" data-act="admFlush">Прати сега</button></div></div>` : ''}
+      <button class="btn big gold" data-act="newBuilding" style="margin-top:0">➕ Нова ЕС – и на двете места</button>
+      <button class="btn lite" data-act="admWeb">🌐 Отвори целия admin.capitalinvest.bg</button>
+      <div class="search"><input id="k-aq2" type="search" placeholder="🔎 Търси ЕС или адрес…" value="${esc(q)}"></div>
+      <div id="k-al">${admEsList(f)}</div>
+      <button class="btn out" data-act="admLogout" style="margin-top:14px">Смени потребителя за админа</button>`, keep);
+  }
+  function admEsList(f) {
+    return f.length ? f.map(e => `<button class="item" data-go="#/adm/${esc(e.id)}"><div class="grow"><div class="ttl">${esc(e.title)}</div>
+      <div class="mut">${esc(e.address || '')}${e.properties_count != null ? ' · ' + e.properties_count + ' обекта' : ''}</div></div>
+      ${num(e.debtors) ? `<span class="chip bad">${e.debtors} длъжн.</span>` : '<span class="chip ok">0 длъжн.</span>'}${admBidOf(e.id) ? ' <span class="chip">⇄</span>' : ''}<span class="arr">›</span></button>`).join('') : '<div class="empty">Няма такава ЕС</div>';
+  }
+  async function scrAdmEs(esId, keep) {
+    const list = await admES(); await admLinks();
+    const e = list.find(x => x.id === esId) || await adm('GET', `/api/es/${esId}`);
+    top(e.title, e.address || '', '#/adm'); tabs();
+    if (!AD.props[esId]) html('<div class="empty">Зареждам обектите…</div>');
+    const [props, persons] = await Promise.all([admProps(esId, !keep), admPersons(esId, !keep)]);
+    const bid = admBidOf(esId);
+    const byP = {}; persons.forEach(p => { const k = admPid(p); (byP[k] = byP[k] || []).push(p); });
+    const inh = props.reduce((s, p) => s + num(p.inhabitants), 0);
+    html(`<div class="card"><div class="grid2">
+        <div><div class="mut">Каса</div><div class="ttl">${num(e.cash_balance).toFixed(2)} €</div></div>
+        <div><div class="mut">Неплатени</div><div class="ttl" style="color:${num(e.total_outstanding_charges) ? 'var(--bad)' : 'inherit'}">${num(e.total_outstanding_charges).toFixed(2)} €</div></div>
+        <div><div class="mut">Длъжници</div><div class="ttl">${num(e.debtors)}</div></div>
+        <div><div class="mut">Живущи</div><div class="ttl">${inh}</div></div></div></div>
+      ${bid ? `<button class="btn big" data-go="#/b/${bid}">📋 Събрания и протоколи на входа ›</button>`
+        : `<button class="btn big" data-act="admImport" data-es="${esc(esId)}">⬇️ Създай я и в Програма за протокол</button><button class="btn out" data-act="admPickB" data-es="${esc(esId)}">🔗 Свържи с вход от програмата</button>`}
+      <h3>Обекти (${props.length})</h3>
+      ${props.map(p => { const ps = byP[p.id] || []; const o = ps.filter(x => x.relationship_type === 'owner');
+        return `<button class="item" data-act="admProp" data-es="${esc(esId)}" data-p="${esc(p.id)}"><div class="num">${esc(p.number)}</div><div class="grow">
+          <div class="ttl">${esc((o[0] || ps[0] || {}).full_name || '—')}${ps.length > 1 ? ` <span class="mut">+${ps.length - 1}</span>` : ''}</div>
+          <div class="mut">ет. ${esc(p.floor ?? '')} · 👪 ${num(p.inhabitants)}${ps.find(x => x.phone_number) ? ' · 📞 ' + esc(ps.find(x => x.phone_number).phone_number) : ''}</div></div>
+          ${num(p.total_unpaid_charges) > 0 ? `<span class="chip bad">${num(p.total_unpaid_charges).toFixed(2)} €</span>` : ''}<span class="arr">›</span></button>`; }).join('') || '<div class="empty">Няма обекти</div>'}
+      <button class="btn lite" data-act="admWeb" style="margin-top:14px">🌐 Отвори в admin.capitalinvest.bg</button>`, keep);
+  }
+  // Един обект: живущи, домашни любимци, хора (име, телефон, имейл) – записва в админа и в програмата
+  async function admPropSheet(esId, pid) {
+    const p = (await admProps(esId)).find(x => x.id === pid); if (!p) return;
+    const ps = (await admPersons(esId)).filter(x => admPid(x) === pid);
+    const rel = { owner: 'Собственик', tenant: 'Наемател', manager: 'Управител', other: 'Друг' };
+    const m = sheet(`<h2>Обект ${esc(p.number)} <span class="mut">· ет. ${esc(p.floor ?? '')}</span></h2>
+      <div class="grid2"><div><label class="l">👪 Живущи</label><input id="ap-in" type="number" inputmode="numeric" min="0" value="${num(p.inhabitants)}"></div>
+      <div><label class="l">🐕 Домашни любимци</label><input id="ap-pe" type="number" inputmode="numeric" min="0" value="${num(p.pets)}"></div></div>
+      ${num(p.total_unpaid_charges) > 0 ? `<div class="mut" style="color:var(--bad);margin-top:6px">Неплатени: ${num(p.total_unpaid_charges).toFixed(2)} €</div>` : ''}
+      <h3>Хора</h3>
+      ${ps.map(x => `<div class="card" data-pp="${esc(x.id)}"><div class="mut">${esc(rel[x.relationship_type] || x.relationship_type)}${x.client_app_login_id ? ' · вход в сайта: ' + esc(x.client_app_login_id) : ''}</div>
+        <input class="ap-n" value="${esc(x.full_name)}" placeholder="Име"><input class="ap-t" type="tel" value="${esc(x.phone_number || '')}" placeholder="Телефон">
+        <input class="ap-e" type="email" autocapitalize="none" value="${esc(x.email || '')}" placeholder="Имейл"></div>`).join('')}
+      <div class="card" data-pp="new"><div class="mut">➕ Нов човек (собственик)</div>
+        <input class="ap-n" placeholder="Три имена"><input class="ap-t" type="tel" placeholder="Телефон"><input class="ap-e" type="email" autocapitalize="none" placeholder="Имейл"></div>
+      <button class="btn big ok" data-x="ok">✓ Запази</button><button class="btn lite" data-x="no">Отказ</button>`);
+    m.querySelector('[data-x=no]').onclick = () => m.remove();
+    m.querySelector('[data-x=ok]').onclick = async () => {
+      const inh = num(m.querySelector('#ap-in').value), pets = num(m.querySelector('#ap-pe').value);
+      const ok = await run('Записвам в админа…', async () => {
+        if (inh !== num(p.inhabitants) || pets !== num(p.pets)) await adm('PATCH', `/api/es-properties/${pid}/`, { inhabitants: inh, pets });
+        for (const c of m.querySelectorAll('[data-pp]')) {
+          const n = c.querySelector('.ap-n').value.trim(), t = c.querySelector('.ap-t').value.trim(), em = c.querySelector('.ap-e').value.trim();
+          if (c.dataset.pp === 'new') { if (n) await adm('POST', '/api/es-related-persons/', { full_name: n, relationship_type: 'owner', email: em, phone_number: t, has_client_app_access: false, is_using_property: true, is_active: true, es_property: pid, entity: await admEntity() }); continue; }
+          const x = ps.find(y => y.id === c.dataset.pp); if (!x || !n) continue;
+          const ch = {}; if (n !== x.full_name) ch.full_name = n; if (t !== (x.phone_number || '')) ch.phone_number = t; if (em !== (x.email || '')) ch.email = em;
+          if (Object.keys(ch).length) await adm('PATCH', `/api/es-related-persons/${x.id}`, ch);
+        }
+        // и в Програма за протокол, ако входът е свързан
+        const bid = admBidOf(esId);
+        if (bid) {
+          const d = await loadBuilding(+bid, true); const u = (d.units || []).find(y => admNo(y.unit_no) === num(p.number));
+          const tel = [...m.querySelectorAll('[data-pp]')].map(c => c.querySelector('.ap-t').value.trim()).find(Boolean) || u?.phone || '';
+          if (u && (num(u.residents_count) !== inh || num(u.dogs_count) !== pets || (tel && tel !== (u.phone || ''))))
+            await patch('/api/units/' + u.id, { unit_no: u.unit_no, floor: u.floor, entrance: u.entrance || '', type: u.type, owner_name: u.owner_name || '', phone: tel || u.phone || '',
+              ideal_parts: num(u.ideal_parts), residents_count: inh, dogs_count: pets, common_rooms_used: num(u.common_rooms_used), uses_elevator: u.uses_elevator == null ? true : !!num(u.uses_elevator) });
+        }
+        delete AD.props[esId]; delete AD.persons[esId]; return true;
+      });
+      if (ok) { m.remove(); success('Записано в админа'); render(true); }
+    };
+  }
+  // Карта „Админ“ в екрана на входа
+  async function admCardHtml(bid) {
+    if (!admOn()) return `<div class="card" style="margin-top:16px"><div class="row"><div class="grow"><div class="ttl">🏢 admin.capitalinvest.bg</div><div class="mut">Свържи, за да отиват хората и живущите и в админа</div></div><button class="btn out sm" data-go="#/adm">Вход ›</button></div></div>`;
+    const L = await admLinks().catch(() => ({}));
+    const esId = L[bid];
+    if (esId) {
+      const e = (await admES().catch(() => [])).find(x => x.id === esId);
+      return `<div class="card" style="margin-top:16px"><div class="row"><div class="grow"><div class="ttl">🏢 В админа: ${esc(e ? e.title : 'свързана ЕС')}</div>
+        <div class="mut">${e ? `${e.properties_count ?? ''} обекта · длъжници ${num(e.debtors)} · неплатени ${num(e.total_outstanding_charges).toFixed(2)} €` : 'Присъстващите се записват и там'}</div></div>
+        <button class="btn out sm" data-go="#/adm/${esc(esId)}">Отвори ›</button></div>
+        <div class="grid2" style="margin-top:8px"><button class="btn lite sm" data-act="admPush" data-b="${bid}" style="margin:0">⬆️ Прати всички обекти</button><button class="btn lite sm" data-act="admPickE" data-b="${bid}" style="margin:0">🔗 Смени връзката</button></div></div>`;
+    }
+    return `<div class="card" style="margin-top:16px"><div class="ttl">🏢 Не е свързан с admin.capitalinvest.bg</div>
+      <div class="grid2" style="margin-top:8px"><button class="btn lite sm" data-act="admPickE" data-b="${bid}" style="margin:0">🔗 Свържи с ЕС</button><button class="btn lite sm" data-act="admMake" data-b="${bid}" style="margin:0">➕ Създай в админа</button></div></div>`;
+  }
+  function pickSheet(title, items, onPick, extra) {
+    const m = sheet(`<h2>${esc(title)}</h2>${extra || ''}<div class="search"><input class="pk-q" type="search" placeholder="🔎 Търси…"></div><div class="pk-l"></div><button class="btn lite" data-x="no">Отказ</button>`);
+    const draw = q => { const nq = norm(q); m.querySelector('.pk-l').innerHTML = items.filter(i => !nq || nq.split(' ').every(w => norm(i.t + ' ' + i.s).includes(w))).slice(0, 60)
+      .map((i, k) => `<button class="item" data-k="${items.indexOf(i)}"><div class="grow"><div class="ttl">${i.star ? '⭐ ' : ''}${esc(i.t)}</div><div class="mut">${esc(i.s || '')}</div></div><span class="arr">›</span></button>`).join('') || '<div class="empty">Няма</div>'; };
+    m.querySelector('.pk-q').oninput = e => draw(e.target.value); draw('');
+    m.querySelector('.pk-l').onclick = e => { const b = e.target.closest('[data-k]'); if (!b) return; m.remove(); onPick(items[+b.dataset.k].v); };
+    m.querySelector('[data-x=no]').onclick = () => m.remove();
+  }
+
+  const ADM_ACTIONS = {
+    admSave: async () => {
+      const em = root.querySelector('#ad-em').value.trim(), pw = root.querySelector('#ad-pw').value;
+      LS.set('adm', { ...admCfg(), email: em, pass: pw }); LS.del('adm_tok'); AD.ents = null; AD.es = null;
+      const ok = await run('Влизам в админа…', async () => { await admLogin(true); await admES(true); return true; });
+      if (ok) { success('Влезе в admin.capitalinvest.bg'); admFlush(); render(); }
+    },
+    admLogout: () => { LS.set('adm', { ...admCfg(), pass: '' }); LS.del('adm_tok'); AD.es = null; AD.ents = null; render(); },
+    admWeb: () => { const w = window.open(ADM_WEB, '_blank'); if (!w) location.href = ADM_WEB; },
+    admFlush: async () => { await admFlush(true); render(true); },
+    admProp: el => admPropSheet(el.dataset.es, el.dataset.p),
+    admMake: async el => {
+      const bid = +el.dataset.b;
+      const es = await run('Създавам в админа…', () => admCreateFromBuilding(bid));
+      if (es) { success('ЕС е създадена и в админа'); render(true); }
+    },
+    admImport: async el => {
+      const bid = await run('Пренасям ЕС в програмата…', () => admImportEs(el.dataset.es));
+      if (bid) { success('Входът е създаден и в Програма за протокол'); go('#/b/' + bid); }
+    },
+    admPickE: async el => {
+      const bid = +el.dataset.b; const b = (await loadBuilding(bid)).building;
+      const list = await run('Зареждам ЕС от админа…', () => admES()); if (!list) return;
+      const g = admGuess(b, list);
+      const items = [...g, ...list.filter(e => !g.includes(e))].map(e => ({ t: e.title, s: e.address || '', v: e.id, star: g.includes(e) }));
+      const L = await admLinks();
+      pickSheet('🔗 Коя ЕС от админа е „' + b.name + '“?', items, async esId => { await admLink(bid, esId); success('Свързано'); admFlush(); render(true); },
+        L[bid] ? '<button class="btn out" data-act="admUnlink" data-b="' + bid + '">✕ Махни връзката</button>' : '');
+    },
+    admUnlink: async el => { root.querySelectorAll('.menu').forEach(x => x.remove()); await admLink(+el.dataset.b, null); toast('Връзката е махната'); render(true); },
+    admPickB: async el => {
+      const esId = el.dataset.es; const e = (await admES()).find(x => x.id === esId);
+      const bl = (await loadBuildings()).filter(b => !b.status || b.status === 'Активна');
+      const g = e ? bl.filter(b => admGuess(b, [e]).length) : [];
+      pickSheet('🔗 Кой вход от програмата е „' + (e ? e.title : '') + '“?', [...g, ...bl.filter(b => !g.includes(b))].map(b => ({ t: b.name, s: b.address || '', v: b.id, star: g.includes(b) })),
+        async bid => { await admLink(bid, esId); success('Свързано'); render(true); });
+    },
+    // Всички обекти от входа → админа (живущи, собственик, телефон)
+    admPush: async el => {
+      const bid = +el.dataset.b;
+      const n = await run('Пращам към админа…', async () => {
+        const d = await loadBuilding(bid, true), L = await admLinks(); const esId = L[bid]; if (!esId) throw new Error('Входът не е свързан');
+        let k = 0; const units = d.units || [];
+        for (const u of units) {
+          busyText(`Обект ${++k} от ${units.length}…`);
+          const c = await contactOf(u.id).catch(() => ({}));
+          await admApply(esId, { unit_no: u.unit_no, floor: u.floor, residents: num(u.residents_count), owner: !!u.owner_name, name: u.owner_name, phone: c.phone || u.phone || '', email: c.email || '' }).catch(e => { if (!/няма обект/.test(e.message)) throw e; });
+        }
+        return k;
+      });
+      if (n) success(`Изпратени ${n} обекта`);
+    },
+  };
+  window.addEventListener('online', () => admFlush());
+  setTimeout(() => admFlush(false), 4000);
+
   const A = {
     login: () => doLogin(),
     menu: () => menu(),
@@ -3403,6 +3783,7 @@
     dl: el => download(el.dataset.u, el.dataset.n),
     print: () => { if (window.KIPrint) window.KIPrint.open(); else toast('Печатът работи в приложението „Протоколи КИ“', true); },
   };
+  Object.assign(A, ADM_ACTIONS);
 
   // Само текстовете (за вече създадено събрание)
   async function autoSetupTextsOnly(mid) {
@@ -3437,6 +3818,7 @@
     const t = e.target;
     if (t.id === 'k-q') { SS.set('q', t.value); const l = root.querySelector('#k-bl'); if (l && D.buildings) l.innerHTML = bList(D.buildings.filter(b => !b.status || b.status === 'Активна'), t.value); }
     else if (t.id === 'k-aq') { SS.set('aq', t.value); filterUnits(t.value); }
+    else if (t.id === 'k-aq2') { SS.set('aq2', t.value); const l = root.querySelector('#k-al'), nq = norm(t.value); if (l && AD.es) l.innerHTML = admEsList(AD.es.filter(e => !nq || nq.split(' ').every(w => norm(e.title + ' ' + (e.address || '')).includes(w)))); }
     else if (t.classList.contains('k-ag')) agInput(t);
   });
   root.addEventListener('change', e => {

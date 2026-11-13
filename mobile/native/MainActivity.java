@@ -611,7 +611,7 @@ public class MainActivity extends BridgeActivity {
 
     /* ---------- 📣 Покани: SMS през SIM картата, връзка към SMSAPI / Brevo, имейл ---------- */
     // Страницата не може сама да се свърже с други сайтове – минава оттук, само към тези адреси
-    private static final String[] HTTP_OK = {"https://api.smsapi.bg/", "https://api2.smsapi.bg/", "https://api.smsapi.com/", "https://api2.smsapi.com/", "https://api.brevo.com/"};
+    private static final String[] HTTP_OK = {"https://api.smsapi.bg/", "https://api2.smsapi.bg/", "https://api.smsapi.com/", "https://api2.smsapi.com/", "https://api.brevo.com/", "https://capitalinvest.bg/api/"};
 
     private void http(String id, String method, String url, String headers, String body) {
         new Thread(() -> {
@@ -623,7 +623,8 @@ public class MainActivity extends BridgeActivity {
                 HttpURLConnection c = (HttpURLConnection) new URL(url).openConnection();
                 c.setConnectTimeout(15000);
                 c.setReadTimeout(60000);
-                c.setRequestMethod(method == null || method.isEmpty() ? "GET" : method);
+                String mm = method == null || method.isEmpty() ? "GET" : method;
+                try { c.setRequestMethod(mm); } catch (java.net.ProtocolException pe) { c.setRequestMethod("POST"); c.setRequestProperty("X-HTTP-Method-Override", mm); }
                 c.setRequestProperty("User-Agent", "Protokoli-KI");
                 if (headers != null && !headers.isEmpty()) {
                     JSONObject h = new JSONObject(headers);
